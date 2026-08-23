@@ -1,0 +1,523 @@
+package com.example.ui.components
+
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.example.model.*
+import com.example.ui.tenants.*
+import com.example.ui.theme.*
+import com.example.viewmodel.ElyzarethOSViewModel
+
+@Composable
+fun DesktopEnvironment(
+    viewModel: ElyzarethOSViewModel,
+    modifier: Modifier = Modifier
+) {
+    val windows by viewModel.windows.collectAsState()
+    val activeAppId by viewModel.activeAppId.collectAsState()
+    val isStartMenuOpen by viewModel.isStartMenuOpen.collectAsState()
+    val isQuickSettingsOpen by viewModel.isQuickSettingsOpen.collectAsState()
+    val wallpaper by viewModel.desktopWallpaper.collectAsState()
+    val searchQuery by viewModel.searchQuery.collectAsState()
+    val telemetry by viewModel.engineTelemetry.collectAsState()
+    val systemToast by viewModel.systemToast.collectAsState()
+    val tenantMetrics by viewModel.tenantMetrics.collectAsState()
+
+    // Lyric Studio State & Panel Architecture
+    val lyricStudioMode by viewModel.lyricStudioMode.collectAsState()
+    val advancedLyricTab by viewModel.advancedLyricTab.collectAsState()
+    val lyricPrompt by viewModel.lyricPrompt.collectAsState()
+    val existingLyric by viewModel.existingLyric.collectAsState()
+    val lyricGenre by viewModel.lyricGenre.collectAsState()
+    val lyricRhymeScheme by viewModel.lyricRhymeScheme.collectAsState()
+    val stylePrompt by viewModel.stylePrompt.collectAsState()
+    val vocalTimbre by viewModel.vocalTimbre.collectAsState()
+    val vocalGender by viewModel.vocalGender.collectAsState()
+    val isInstrumental by viewModel.isInstrumental.collectAsState()
+    val attachedAudio by viewModel.attachedAudio.collectAsState()
+    val attachedVoice by viewModel.attachedVoice.collectAsState()
+    val currentLyricEvidence by viewModel.currentLyricEvidence.collectAsState()
+    val excludeStyles by viewModel.excludeStyles.collectAsState()
+    val weirdness by viewModel.weirdness.collectAsState()
+    val styleInfluence by viewModel.styleInfluence.collectAsState()
+    val songTitleInput by viewModel.songTitleInput.collectAsState()
+    val audioCadenceProfile by viewModel.audioCadenceProfile.collectAsState()
+    val selectedMagicOp by viewModel.selectedMagicOp.collectAsState()
+    val activeSong by viewModel.activeSong.collectAsState()
+    val rhymeQuery by viewModel.rhymeQuery.collectAsState()
+    val rhymeSuggestions by viewModel.rhymeSuggestions.collectAsState()
+    val isGeneratingLyric by viewModel.isGeneratingLyric.collectAsState()
+
+
+    // Corpus / Lyric Curator (The Sitting Room) State
+    val baseCompositions by viewModel.baseCompositions.collectAsState()
+    val selectedBaseCompositionId by viewModel.selectedBaseCompositionId.collectAsState()
+    val selectedVersionId by viewModel.selectedVersionId.collectAsState()
+    val sittingRoomTab by viewModel.sittingRoomTab.collectAsState()
+    val selectedGateDiagnostic by viewModel.selectedGateDiagnostic.collectAsState()
+    val isIngressDialogOpen by viewModel.isIngressDialogOpen.collectAsState()
+    val ingressDialogType by viewModel.ingressDialogType.collectAsState()
+    val ingressTitle by viewModel.ingressTitle.collectAsState()
+    val ingressLyricText by viewModel.ingressLyricText.collectAsState()
+    val ingressSourceOrigin by viewModel.ingressSourceOrigin.collectAsState()
+    val ingressAudioIncluded by viewModel.ingressAudioIncluded.collectAsState()
+    val ingressAudioDecoderPass by viewModel.ingressAudioDecoderPass.collectAsState()
+    val corpusList by viewModel.corpusList.collectAsState()
+    val selectedCorpus by viewModel.selectedCorpus.collectAsState()
+    val corpusSearch by viewModel.corpusSearch.collectAsState()
+
+    // Integrator State
+    val pipelineNodes by viewModel.pipelineNodes.collectAsState()
+    val pipelineStatus by viewModel.pipelineStatus.collectAsState()
+    val pipelineProgress by viewModel.pipelineProgress.collectAsState()
+    val pipelineLogs by viewModel.pipelineExecutionLogs.collectAsState()
+    val masterBundle by viewModel.masterIntegratedBundle.collectAsState()
+
+    // Engine Terminal State
+    val auditLogs by viewModel.auditLogs.collectAsState()
+    val testbenchInput by viewModel.testbenchInput.collectAsState()
+    val testbenchResult by viewModel.testbenchResult.collectAsState()
+
+    // Space Archive State
+    val archiveFiles by viewModel.archiveFiles.collectAsState()
+    val selectedArchiveFile by viewModel.selectedArchiveFile.collectAsState()
+    val archiveCategoryFilter by viewModel.archiveCategoryFilter.collectAsState()
+
+    // Auto-clear toast
+    LaunchedEffect(systemToast) {
+        if (systemToast != null) {
+            kotlinx.coroutines.delay(2800)
+            viewModel.clearToast()
+        }
+    }
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(ElyBackground)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) {
+                if (isStartMenuOpen) viewModel.toggleStartMenu()
+                if (isQuickSettingsOpen) viewModel.toggleQuickSettings()
+            }
+    ) {
+        // Dynamic Desktop Wallpaper Canvas
+        DesktopWallpaperCanvas(wallpaper = wallpaper)
+
+        // Desktop Shortcuts (Top-Left grid)
+        Column(
+            modifier = Modifier
+                .padding(top = 40.dp, start = 16.dp)
+                .wrapContentSize(),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            AppId.values().forEach { appId ->
+                DesktopShortcutIcon(
+                    appId = appId,
+                    onClick = { viewModel.openApp(appId) }
+                )
+            }
+        }
+
+        // Desktop Center Watermark / Branding
+        Box(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .offset(y = (-40).dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = "ELYZARETH OS",
+                    fontSize = 24.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color.White.copy(alpha = 0.08f),
+                    letterSpacing = 8.sp
+                )
+                Text(
+                    text = "ONE SPACE // FIVE TENANTS // FORENSIC WORKSPACE",
+                    fontSize = 9.sp,
+                    fontFamily = FontFamily.Monospace,
+                    color = ElyCyan.copy(alpha = 0.12f),
+                    letterSpacing = 2.sp
+                )
+            }
+        }
+
+        // Window Shells Area (Landlord Space)
+        val sortedWindows = windows.values.toList().sortedBy { it.zIndex }
+        sortedWindows.forEach { win ->
+            val isActive = activeAppId == win.appId
+
+            UniversalWindowShell(
+                window = win,
+                isActive = isActive,
+                onFocus = { viewModel.focusWindow(win.appId) },
+                onMinimize = { viewModel.minimizeWindow(win.appId) },
+                onToggleMaximize = { viewModel.toggleMaximizeWindow(win.appId) },
+                onClose = { viewModel.closeWindow(win.appId) },
+                onDragPosition = { x, y -> viewModel.updateWindowPosition(win.appId, x, y) }
+            ) {
+                when (win.appId) {
+                    AppId.LYRIC_GENERATOR -> {
+                        LyricGeneratorApp(
+                            studioMode = lyricStudioMode,
+                            advancedTab = advancedLyricTab,
+                            storyConcept = lyricPrompt,
+                            existingLyric = existingLyric,
+                            genre = lyricGenre,
+                            rhymeScheme = lyricRhymeScheme,
+                            stylePrompt = stylePrompt,
+                            vocalTimbre = vocalTimbre,
+                            vocalGender = vocalGender,
+                            isInstrumental = isInstrumental,
+                            attachedAudio = attachedAudio,
+                            attachedVoice = attachedVoice,
+                            currentLyricEvidence = currentLyricEvidence,
+                            excludeStyles = excludeStyles,
+                            weirdness = weirdness,
+                            styleInfluence = styleInfluence,
+                            songTitleInput = songTitleInput,
+                            audioProfile = audioCadenceProfile,
+                            selectedMagicOp = selectedMagicOp,
+                            activeSong = activeSong,
+                            rhymeQuery = rhymeQuery,
+                            rhymeSuggestions = rhymeSuggestions,
+                            isGenerating = isGeneratingLyric,
+                            onStudioModeChange = viewModel::setLyricStudioMode,
+                            onAdvancedTabChange = viewModel::setAdvancedLyricTab,
+                            onStoryConceptChange = viewModel::setLyricPrompt,
+                            onExistingLyricChange = viewModel::setExistingLyric,
+                            onGenreChange = viewModel::setLyricGenre,
+                            onRhymeSchemeChange = viewModel::setLyricRhymeScheme,
+                            onStylePromptChange = viewModel::setStylePrompt,
+                            onVocalTimbreChange = viewModel::setVocalTimbre,
+                            onVocalGenderChange = viewModel::setVocalGender,
+                            onToggleInstrumental = viewModel::toggleInstrumental,
+                            onAttachAudio = viewModel::attachAudio,
+                            onRemoveAttachedAudio = viewModel::removeAttachedAudio,
+                            onAttachVoice = viewModel::attachVoice,
+                            onRemoveAttachedVoice = viewModel::removeAttachedVoice,
+                            onExcludeStylesChange = viewModel::setExcludeStyles,
+                            onWeirdnessChange = viewModel::setWeirdness,
+                            onStyleInfluenceChange = viewModel::setStyleInfluence,
+                            onSongTitleInputChange = viewModel::setSongTitleInput,
+                            onRandomizePrompt = viewModel::randomizePrompt,
+                            onAudioProfileChange = viewModel::setAudioCadenceProfile,
+                            onSelectedMagicOpChange = viewModel::setSelectedMagicOp,
+                            onExecuteLyricMagic = viewModel::executeLyricMagic,
+                            onExecuteStyleMagic = viewModel::executeStyleMagic,
+                            onExecuteAudioMagic = viewModel::executeAudioMagic,
+                            onCommitCreate = viewModel::executeCommitCreate,
+                            onSearchRhyme = viewModel::searchRhymes,
+                            onSaveToArchive = viewModel::saveSongToArchive,
+                            onSendToIntegrator = viewModel::sendSongToIntegrator
+                        )
+                    }
+                    AppId.CORPUS_CURATOR -> {
+                        CorpusCuratorApp(
+                            baseCompositions = baseCompositions,
+                            selectedBaseCompositionId = selectedBaseCompositionId,
+                            selectedVersionId = selectedVersionId,
+                            sittingRoomTab = sittingRoomTab,
+                            selectedGateDiagnostic = selectedGateDiagnostic,
+                            corpusSearch = corpusSearch,
+                            isIngressDialogOpen = isIngressDialogOpen,
+                            ingressDialogType = ingressDialogType,
+                            ingressTitle = ingressTitle,
+                            ingressLyricText = ingressLyricText,
+                            ingressSourceOrigin = ingressSourceOrigin,
+                            ingressAudioIncluded = ingressAudioIncluded,
+                            ingressAudioDecoderPass = ingressAudioDecoderPass,
+                            onSelectBaseComposition = viewModel::selectBaseComposition,
+                            onSelectVersion = viewModel::selectSpecimenVersion,
+                            onSelectTab = viewModel::setSittingRoomTab,
+                            onSelectGate = viewModel::selectGateDiagnostic,
+                            onPreserve = viewModel::preserveSpecimen,
+                            onAccept = viewModel::acceptSpecimenToVault,
+                            onSendToEngine = viewModel::sendSpecimenToEngine,
+                            onSearchChange = viewModel::setCorpusSearch,
+                            onOpenIngressDialog = viewModel::openIngressDialog,
+                            onCloseIngressDialog = viewModel::closeIngressDialog,
+                            onIngressTitleChange = viewModel::setIngressTitle,
+                            onIngressLyricTextChange = viewModel::setIngressLyricText,
+                            onIngressSourceOriginChange = viewModel::setIngressSourceOrigin,
+                            onIngressAudioIncludedChange = viewModel::setIngressAudioIncluded,
+                            onIngressAudioDecoderPassChange = viewModel::setIngressAudioDecoderPass,
+                            onCommitIngress = viewModel::commitSpecimenIngress,
+                            onCommitHumanGovernorDisposition = viewModel::commitHumanGovernorDisposition
+                        )
+                    }
+                    AppId.INTEGRATOR -> {
+                        IntegratorApp(
+                            nodes = pipelineNodes,
+                            status = pipelineStatus,
+                            progress = pipelineProgress,
+                            executionLogs = pipelineLogs,
+                            masterBundle = masterBundle,
+                            onExecutePipeline = viewModel::executeIntegratorPipeline,
+                            onResetPipeline = viewModel::resetPipeline,
+                            onOpenLyricApp = { viewModel.openApp(AppId.LYRIC_GENERATOR) },
+                            onOpenCorpusApp = { viewModel.openApp(AppId.CORPUS_CURATOR) },
+                            onOpenArchiveApp = { viewModel.openApp(AppId.SPACE_ARCHIVE) }
+                        )
+                    }
+                    AppId.ENGINE_TERMINAL -> {
+                        EngineTerminalApp(
+                            telemetry = telemetry,
+                            auditLogs = auditLogs,
+                            testbenchInput = testbenchInput,
+                            testbenchResult = testbenchResult,
+                            onTestbenchInputChange = viewModel::setTestbenchInput,
+                            onRunTestbench = viewModel::runForensicTestbench,
+                            onUpdateParameters = viewModel::updateEngineParameters
+                        )
+                    }
+                    AppId.SPACE_ARCHIVE -> {
+                        SpaceArchiveApp(
+                            files = archiveFiles,
+                            selectedFile = selectedArchiveFile,
+                            categoryFilter = archiveCategoryFilter,
+                            onCategorySelect = viewModel::setArchiveCategoryFilter,
+                            onSelectFile = viewModel::selectArchiveFile,
+                            onCopyContent = viewModel::copyFileContentToClipboard
+                        )
+                    }
+                }
+            }
+        }
+
+        // Start Menu Floating Pop-up (Centered above taskbar)
+        StartMenu(
+            isOpen = isStartMenuOpen,
+            searchQuery = searchQuery,
+            windows = windows,
+            tenantMetrics = tenantMetrics,
+            onSearchChange = viewModel::setSearchQuery,
+            onLaunchApp = viewModel::openApp,
+            onCascadeWindows = viewModel::cascadeWindows,
+            onTileWindows = viewModel::tileWindows,
+            onMinimizeAll = viewModel::minimizeAll,
+            onPurgeMemory = viewModel::purgeMemory,
+            onRestartOS = viewModel::restartOS,
+            onClose = viewModel::toggleStartMenu,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 64.dp)
+        )
+
+        // Quick Settings / Telemetry Drawer (Bottom-Right above taskbar)
+        QuickSettingsDrawer(
+            isOpen = isQuickSettingsOpen,
+            telemetry = telemetry,
+            currentWallpaper = wallpaper,
+            onSelectWallpaper = viewModel::setWallpaper,
+            onRestartOS = viewModel::restartOS,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(bottom = 64.dp, end = 12.dp)
+        )
+
+        // System Notification Toast Pill
+        AnimatedVisibility(
+            visible = systemToast != null,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 40.dp)
+        ) {
+            systemToast?.let { msg ->
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(ElyHeaderGlass)
+                        .border(1.dp, ElyCyan.copy(alpha = 0.5f), RoundedCornerShape(20.dp))
+                        .padding(horizontal = 14.dp, vertical = 8.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(Icons.Default.Info, contentDescription = null, tint = ElyCyan, modifier = Modifier.size(16.dp))
+                        Text(
+                            text = msg,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = ElyTextPrimary
+                        )
+                    }
+                }
+            }
+        }
+
+        // Bottom Windows 11 Taskbar (Fixed at bottom)
+        Taskbar(
+            windows = windows,
+            tenantMetrics = tenantMetrics,
+            activeAppId = activeAppId,
+            isStartMenuOpen = isStartMenuOpen,
+            isQuickSettingsOpen = isQuickSettingsOpen,
+            engineTelemetry = telemetry,
+            onToggleStartMenu = viewModel::toggleStartMenu,
+            onToggleQuickSettings = viewModel::toggleQuickSettings,
+            onAppIconClick = { appId ->
+                val win = windows[appId]
+                if (win == null || win.isClosed) {
+                    viewModel.openApp(appId)
+                } else if (win.isMinimized) {
+                    viewModel.focusWindow(appId)
+                } else if (activeAppId == appId) {
+                    viewModel.minimizeWindow(appId)
+                } else {
+                    viewModel.focusWindow(appId)
+                }
+            },
+            onAppTerminate = { appId ->
+                viewModel.terminateTenantProcess(appId)
+            },
+            modifier = Modifier.align(Alignment.BottomCenter)
+        )
+    }
+}
+
+@Composable
+private fun DesktopWallpaperCanvas(wallpaper: String) {
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        val width = size.width
+        val height = size.height
+
+        // Dark gradient base
+        drawRect(
+            brush = Brush.radialGradient(
+                colors = when (wallpaper) {
+                    "Cyber Matrix" -> listOf(
+                        Color(0xFF064E3B).copy(alpha = 0.4f),
+                        Color(0xFF0F172A),
+                        Color(0xFF020617)
+                    )
+                    "Deep Mica" -> listOf(
+                        Color(0xFF1E1B4B).copy(alpha = 0.35f),
+                        Color(0xFF0F172A),
+                        Color(0xFF0B0F19)
+                    )
+                    else -> listOf(
+                        Color(0xFF0369A1).copy(alpha = 0.3f),
+                        Color(0xFF311042).copy(alpha = 0.25f),
+                        Color(0xFF090D16)
+                    )
+                },
+                center = Offset(width * 0.5f, height * 0.35f),
+                radius = width * 0.9f
+            )
+        )
+
+        // Subdued futuristic grid
+        val step = 60f
+        var x = 0f
+        while (x < width) {
+            drawLine(
+                color = Color.White.copy(alpha = 0.02f),
+                start = Offset(x, 0f),
+                end = Offset(x, height),
+                strokeWidth = 1f
+            )
+            x += step
+        }
+        var y = 0f
+        while (y < height) {
+            drawLine(
+                color = Color.White.copy(alpha = 0.02f),
+                start = Offset(0f, y),
+                end = Offset(width, y),
+                strokeWidth = 1f
+            )
+            y += step
+        }
+    }
+}
+
+@Composable
+private fun DesktopShortcutIcon(
+    appId: AppId,
+    onClick: () -> Unit
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+        modifier = Modifier
+            .width(64.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+            .padding(4.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(
+                    Brush.linearGradient(
+                        listOf(
+                            when (appId) {
+                                AppId.LYRIC_GENERATOR -> ElyCyan
+                                AppId.CORPUS_CURATOR -> ElyPurple
+                                AppId.INTEGRATOR -> ElyCyanBright
+                                AppId.ENGINE_TERMINAL -> ElyG3Axiom
+                                AppId.SPACE_ARCHIVE -> ElyIndigo
+                            },
+                            Color(0xFF0F172A)
+                        )
+                    )
+                )
+                .border(0.5.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(10.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = appId.defaultIcon,
+                contentDescription = appId.title,
+                tint = Color.White,
+                modifier = Modifier.size(22.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(3.dp))
+        Text(
+            text = appId.shortName,
+            fontSize = 9.sp,
+            fontWeight = FontWeight.Medium,
+            color = ElyTextPrimary,
+            maxLines = 1
+        )
+    }
+}

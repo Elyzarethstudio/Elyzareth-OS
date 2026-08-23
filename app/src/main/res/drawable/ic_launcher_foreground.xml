@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    
+    <!-- Top-Left Tile (Mica Cyan) -->
+    <path
+        android:pathData="M30,30 L50,30 A2,2 0 0,1 52,32 L52,50 A2,2 0 0,1 50,52 L30,52 A2,2 0 0,1 28,50 L28,32 A2,2 0 0,1 30,30 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="28"
+                android:startY="28"
+                android:endX="52"
+                android:endY="52"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#38BDF8" />
+                <item android:offset="1.0" android:color="#0284C7" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Top-Right Tile (Mica Violet) -->
+    <path
+        android:pathData="M58,30 L78,30 A2,2 0 0,1 80,32 L80,50 A2,2 0 0,1 78,52 L58,52 A2,2 0 0,1 56,50 L56,32 A2,2 0 0,1 58,30 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="56"
+                android:startY="28"
+                android:endX="80"
+                android:endY="52"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#818CF8" />
+                <item android:offset="1.0" android:color="#4F46E5" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Bottom-Left Tile (Mica Purple) -->
+    <path
+        android:pathData="M30,58 L50,58 A2,2 0 0,1 52,60 L52,78 A2,2 0 0,1 50,80 L30,80 A2,2 0 0,1 28,78 L28,60 A2,2 0 0,1 30,58 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="28"
+                android:startY="56"
+                android:endX="52"
+                android:endY="80"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#C084FC" />
+                <item android:offset="1.0" android:color="#9333EA" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Bottom-Right Tile (Mica Emerald / Elyzareth Engine) -->
+    <path
+        android:pathData="M58,58 L78,58 A2,2 0 0,1 80,60 L80,78 A2,2 0 0,1 78,80 L58,80 A2,2 0 0,1 56,78 L56,60 A2,2 0 0,1 58,58 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="56"
+                android:startY="56"
+                android:endX="80"
+                android:endY="80"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#2DD4BF" />
+                <item android:offset="1.0" android:color="#0D9488" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Center Elyzareth Core Ring -->
+    <path
+        android:pathData="M54,46 L54,62 M46,54 L62,54"
+        android:strokeWidth="2.5"
+        android:strokeColor="#FFFFFF"
+        android:strokeLineCap="round" />
+</vector>

@@ -1,0 +1,6 @@
+{
+  "name": "Elyzareth OS",
+  "description": "A Windows 11-inspired desktop environment with the UniversalWindowShell, Elyzareth Engine intelligence, G1-G3 governance, Lyric Generator, Corpus Curator, Integrator pipeline, Governance Matrix, and Archive Hub.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
