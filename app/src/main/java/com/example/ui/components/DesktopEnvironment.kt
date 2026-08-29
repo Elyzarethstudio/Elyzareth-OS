@@ -74,6 +74,10 @@ fun DesktopEnvironment(
     val rhymeQuery by viewModel.rhymeQuery.collectAsState()
     val rhymeSuggestions by viewModel.rhymeSuggestions.collectAsState()
     val isGeneratingLyric by viewModel.isGeneratingLyric.collectAsState()
+    val turboValidationReport by viewModel.turboValidationReport.collectAsState()
+    val activeCreativeDna by viewModel.activeCreativeDna.collectAsState()
+    val turboEngineMode by viewModel.turboEngineMode.collectAsState()
+    val activeAcousticConstraint by viewModel.activeAcousticConstraint.collectAsState()
 
 
     // Corpus / Lyric Curator (The Sitting Room) State
@@ -375,6 +379,10 @@ fun DesktopEnvironment(
                             rhymeQuery = rhymeQuery,
                             rhymeSuggestions = rhymeSuggestions,
                             isGenerating = isGeneratingLyric,
+                            turboValidationReport = turboValidationReport,
+                            activeCreativeDna = activeCreativeDna,
+                            turboEngineMode = turboEngineMode,
+                            activeAcousticConstraint = activeAcousticConstraint,
                             onStudioModeChange = viewModel::setLyricStudioMode,
                             onAdvancedTabChange = viewModel::setAdvancedLyricTab,
                             onStoryConceptChange = viewModel::setLyricPrompt,

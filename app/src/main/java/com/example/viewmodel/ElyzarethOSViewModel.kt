@@ -9,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.engine.CorpusDiscoveryEngine
 import com.example.engine.CorpusPersistenceManager
 import com.example.engine.ElyzarethGovernanceEngine
+import com.example.engine.ElyzarethTurboEngine
 import com.example.engine.TenantLifecycleManager
 import com.example.model.*
 import kotlinx.coroutines.Dispatchers
@@ -130,6 +131,19 @@ class ElyzarethOSViewModel : ViewModel() {
 
     private val _isGeneratingLyric = MutableStateFlow(false)
     val isGeneratingLyric: StateFlow<Boolean> = _isGeneratingLyric.asStateFlow()
+
+    // App 01: 60-Day Elyzareth Turbo Engine Intelligence State
+    private val _turboValidationReport = MutableStateFlow<TurboValidationReport?>(null)
+    val turboValidationReport: StateFlow<TurboValidationReport?> = _turboValidationReport.asStateFlow()
+
+    private val _activeCreativeDna = MutableStateFlow<CreativeDnaProfile?>(null)
+    val activeCreativeDna: StateFlow<CreativeDnaProfile?> = _activeCreativeDna.asStateFlow()
+
+    private val _turboEngineMode = MutableStateFlow(TurboEngineMode.GENERATE)
+    val turboEngineMode: StateFlow<TurboEngineMode> = _turboEngineMode.asStateFlow()
+
+    private val _activeAcousticConstraint = MutableStateFlow<ElyzarethAcousticConstraint>(ELYZARETH_RUSTIC_ACOUSTIC_v1)
+    val activeAcousticConstraint: StateFlow<ElyzarethAcousticConstraint> = _activeAcousticConstraint.asStateFlow()
 
 
     // App 02: Corpus / Lyric Curator (The Sitting Room)
@@ -694,23 +708,47 @@ class ElyzarethOSViewModel : ViewModel() {
         viewModelScope.launch {
             _isGeneratingLyric.value = true
             _selectedMagicOp.value = op
-            addAuditLog("MAGIC_LYRIC", "App 01 Lyric Engine Magic: ${op.title} (Context: ${_lyricGenre.value})...", "ELY-LYRIC-${op.name.take(4)}")
-            delay(800)
-            val song = ElyzarethGovernanceEngine.executeMagicTransformation(
-                operation = op,
-                storyConcept = _lyricPrompt.value,
-                existingLyric = _existingLyric.value,
-                genre = _lyricGenre.value,
-                rhymeScheme = _lyricRhymeScheme.value,
-                stylePrompt = _stylePrompt.value,
-                vocalTimbre = _attachedVoice.value?.timbre ?: _vocalTimbre.value,
-                audioProfile = _audioCadenceProfile.value
-            )
-            _activeSong.value = song
-            _existingLyric.value = song.rawLyricText
-            _isGeneratingLyric.value = false
-            addAuditLog("G1_LEXICAL", "Lyric Suite '${song.title}' transformed via Lyric Engine [${op.title}]", song.g3SealHash)
-            showToast("✨ Lyric Magic: ${op.title} Completed")
+            addAuditLog("MAGIC_LYRIC", "App 01 Turbo Engine Craft: ${op.title} (Context: ${_lyricGenre.value})...", "ELY-TURBO-${op.name.take(4)}")
+            delay(600)
+
+            if (op == MagicOperationType.CURE && _activeCureRequest.value != null) {
+                // Governed Turbo CURE mode
+                val cureOutput = ElyzarethTurboEngine.executeGovernedCure(
+                    cureRequest = _activeCureRequest.value!!,
+                    genre = _lyricGenre.value,
+                    stylePrompt = _stylePrompt.value,
+                    vocalTimbre = _attachedVoice.value?.timbre ?: _vocalTimbre.value,
+                    audioProfile = _audioCadenceProfile.value
+                )
+                _activeSong.value = cureOutput.generatedSong
+                _existingLyric.value = cureOutput.generatedSong.rawLyricText
+                _activeCreativeDna.value = cureOutput.creativeDna
+                _turboValidationReport.value = cureOutput.validationReport
+                _turboEngineMode.value = TurboEngineMode.CURE
+                _isGeneratingLyric.value = false
+                addAuditLog("TURBO_CURE", "Turbo Engine surgical cure applied for '${cureOutput.generatedSong.title}' [Anchors: ${cureOutput.validationReport.physicalAnchorCount}]", cureOutput.engineSeal)
+                showToast("✨ Turbo Engine CURE Applied (Physical Anchors Preserved)")
+            } else {
+                // Governed Turbo GENERATE / TRANSFORMATION mode
+                val effectiveTitle = if (_songTitleInput.value.isNotBlank()) _songTitleInput.value else if (_lyricPrompt.value.isNotBlank()) _lyricPrompt.value.take(24) else "Sovereign Opus"
+                val turboOutput = ElyzarethTurboEngine.executeGovernedGenerate(
+                    title = effectiveTitle,
+                    storyConcept = _lyricPrompt.value,
+                    genre = _lyricGenre.value,
+                    rhymeScheme = _lyricRhymeScheme.value,
+                    stylePrompt = _stylePrompt.value,
+                    vocalTimbre = _attachedVoice.value?.timbre ?: _vocalTimbre.value,
+                    audioProfile = _audioCadenceProfile.value
+                )
+                _activeSong.value = turboOutput.generatedSong
+                _existingLyric.value = turboOutput.generatedSong.rawLyricText
+                _activeCreativeDna.value = turboOutput.creativeDna
+                _turboValidationReport.value = turboOutput.validationReport
+                _turboEngineMode.value = TurboEngineMode.GENERATE
+                _isGeneratingLyric.value = false
+                addAuditLog("TURBO_GEN", "Turbo Engine governed generation: '${turboOutput.generatedSong.title}' [Coherence: ${(turboOutput.validationReport.themeStyleCoherenceScore * 100).toInt()}%]", turboOutput.engineSeal)
+                showToast("✨ Turbo Engine: ${op.title} Completed (Governed DNA)")
+            }
         }
     }
 
@@ -774,34 +812,34 @@ class ElyzarethOSViewModel : ViewModel() {
             _isGeneratingLyric.value = true
             _selectedMagicOp.value = MagicOperationType.CREATE
             val effectiveTitle = if (_songTitleInput.value.isNotBlank()) _songTitleInput.value else if (_lyricPrompt.value.isNotBlank()) _lyricPrompt.value.take(24) else "Sovereign Opus"
-            addAuditLog("COMMIT_CREATE", "App 01 Committing Assembled Master Song Specification to Generation ($effectiveTitle)...", "ELY-COMMIT")
-            delay(1200)
+            addAuditLog("COMMIT_CREATE", "App 01 Committing Assembled Master Song Specification via Turbo Engine ($effectiveTitle)...", "ELY-TURBO-COMMIT")
+            delay(1000)
 
-            val song = if (_lyricStudioMode.value == LyricStudioMode.SIMPLE) {
-                executeSimpleModeMagic(_lyricPrompt.value, _existingLyric.value, _lyricGenre.value, _lyricRhymeScheme.value)
-            } else {
-                ElyzarethGovernanceEngine.executeMagicTransformation(
-                    operation = MagicOperationType.CREATE,
-                    storyConcept = _lyricPrompt.value,
-                    existingLyric = _existingLyric.value,
-                    genre = _lyricGenre.value,
-                    rhymeScheme = _lyricRhymeScheme.value,
-                    stylePrompt = _stylePrompt.value,
-                    vocalTimbre = _attachedVoice.value?.timbre ?: _vocalTimbre.value,
-                    audioProfile = _audioCadenceProfile.value
-                )
-            }
+            // Pass through Turbo Engine (The Hand That Creates And Repairs)
+            val turboOutput = ElyzarethTurboEngine.executeGovernedGenerate(
+                title = effectiveTitle,
+                storyConcept = _lyricPrompt.value,
+                genre = _lyricGenre.value,
+                rhymeScheme = _lyricRhymeScheme.value,
+                stylePrompt = _stylePrompt.value,
+                vocalTimbre = _attachedVoice.value?.timbre ?: _vocalTimbre.value,
+                audioProfile = _audioCadenceProfile.value
+            )
 
-            val finalSong = song.copy(
+            val finalSong = turboOutput.generatedSong.copy(
                 title = "$effectiveTitle // ${_lyricGenre.value}",
                 stylePrompt = _stylePrompt.value,
                 vocalTimbre = _attachedVoice.value?.timbre ?: _vocalTimbre.value
             )
 
             _activeSong.value = finalSong
+            _existingLyric.value = finalSong.rawLyricText
+            _activeCreativeDna.value = turboOutput.creativeDna
+            _turboValidationReport.value = turboOutput.validationReport
+            _turboEngineMode.value = TurboEngineMode.GENERATE
             _isGeneratingLyric.value = false
-            addAuditLog("G3_AXIOM", "Master Song Suite '${finalSong.title}' committed & sealed with G3 hash.", finalSong.g3SealHash)
-            showToast("🎵 Committed & Created Master Song Suite")
+            addAuditLog("G3_AXIOM", "Master Song Suite '${finalSong.title}' committed & sealed with Turbo G3 hash.", finalSong.g3SealHash)
+            showToast("🎵 Committed & Created Master Song Suite (Turbo Governed)")
         }
     }
 

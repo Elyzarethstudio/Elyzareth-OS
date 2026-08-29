@@ -103,6 +103,9 @@ data class GeneratedSong(
     val tempoBpm: Int = 120,
     val timeSignature: String = "4/4",
     val vocalTimbre: String = "Ethereal / Resonant",
+    val acousticConstraint: ElyzarethAcousticConstraint? = ELYZARETH_RUSTIC_ACOUSTIC_v1,
+    val sparseArrangementConstraints: SparseArrangementConstraints? = ELYZARETH_SPARSE_ARRANGEMENT_CONSTRAINTS_v1_0,
+    val physicalAnchorDiagnostic: PhysicalAnchorDiagnosticResult? = null,
     val createdTimeMillis: Long = System.currentTimeMillis()
 )
 

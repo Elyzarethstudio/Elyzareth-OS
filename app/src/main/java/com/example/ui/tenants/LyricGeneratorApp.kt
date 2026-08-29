@@ -57,6 +57,10 @@ fun LyricGeneratorApp(
     rhymeQuery: String,
     rhymeSuggestions: List<RhymeSuggestion>,
     isGenerating: Boolean,
+    turboValidationReport: TurboValidationReport? = null,
+    activeCreativeDna: CreativeDnaProfile? = null,
+    turboEngineMode: TurboEngineMode = TurboEngineMode.GENERATE,
+    activeAcousticConstraint: ElyzarethAcousticConstraint = ELYZARETH_RUSTIC_ACOUSTIC_v1,
     onStudioModeChange: (LyricStudioMode) -> Unit,
     onAdvancedTabChange: (AdvancedLyricTab) -> Unit,
     onStoryConceptChange: (String) -> Unit,
@@ -160,28 +164,53 @@ fun LyricGeneratorApp(
                         }
                     }
 
-                    // Version Tag
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(Color(0xFF2A2020))
-                            .border(0.5.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(16.dp))
-                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                    // Version Tag & Turbo Engine Active Pill
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = "v38.1",
-                                fontSize = 12.sp,
-                                fontFamily = FontFamily.Monospace,
-                                color = ElyTextSecondary
-                            )
-                            Spacer(modifier = Modifier.width(3.dp))
-                            Icon(
-                                imageVector = Icons.Default.KeyboardArrowDown,
-                                contentDescription = null,
-                                tint = ElyTextTertiary,
-                                modifier = Modifier.size(14.dp)
-                            )
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(Color(0xFF2E1F1A))
+                                .border(0.5.dp, Color(0xFFFF6600).copy(alpha = 0.4f), RoundedCornerShape(16.dp))
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(Color(0xFFFF6600)))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "TURBO // ${turboEngineMode.label}",
+                                    fontSize = 10.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFFF9944)
+                                )
+                            }
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(Color(0xFF2A2020))
+                                .border(0.5.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(16.dp))
+                                .padding(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "v38.1",
+                                    fontSize = 12.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = ElyTextSecondary
+                                )
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Icon(
+                                    imageVector = Icons.Default.KeyboardArrowDown,
+                                    contentDescription = null,
+                                    tint = ElyTextTertiary,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -1216,6 +1245,260 @@ fun LyricGeneratorApp(
                                 color = Color.White,
                                 fontSize = 15.sp,
                                 fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
+
+            // -------------------------------------------------------------
+            // TURBO ENGINE VALIDATION REPORT & CREATIVE DNA CARD
+            // -------------------------------------------------------------
+            if (turboValidationReport != null) {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFF1E1410))
+                            .border(1.dp, Color(0xFFFF6600).copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                            .padding(12.dp)
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Shield,
+                                        contentDescription = null,
+                                        tint = Color(0xFFFF9944),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Text(
+                                        text = "TURBO ENGINE CRAFT GOVERNANCE",
+                                        fontSize = 11.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFFFF9944)
+                                    )
+                                }
+                                if (activeCreativeDna != null) {
+                                    Text(
+                                        text = activeCreativeDna.dnaId,
+                                        fontSize = 10.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        color = ElyTextSecondary
+                                    )
+                                }
+                            }
+
+                            Text(
+                                text = turboValidationReport.engineDiagnosticSummary,
+                                fontSize = 11.sp,
+                                color = ElyTextPrimary
+                            )
+
+                            // Diagnostic Grid
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(Color(0xFF2B1D16))
+                                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                                ) {
+                                    Column {
+                                        Text("PHYSICAL_ANCHOR STATUS", fontSize = 9.sp, fontFamily = FontFamily.Monospace, color = ElyTextTertiary)
+                                        val diag = turboValidationReport.physicalAnchorDiagnostic
+                                        val statusText = diag?.status ?: if (turboValidationReport.physicalAnchorCount > 0) "PASS" else "FAIL"
+                                        Text(
+                                            text = "$statusText (${turboValidationReport.physicalAnchorCount} Objects)",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = if (statusText == "PASS") ElyG3Axiom else ElyAmberWarning
+                                        )
+                                    }
+                                }
+
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(Color(0xFF2B1D16))
+                                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                                ) {
+                                    Column {
+                                        Text("ANCHOR_DENSITY", fontSize = 9.sp, fontFamily = FontFamily.Monospace, color = ElyTextTertiary)
+                                        Text(
+                                            text = turboValidationReport.physicalAnchorDiagnostic?.anchorDensity ?: "${turboValidationReport.physicalAnchorCount} anchors",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = ElyCyanBright
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Anchors and Collision Flags
+                            val diag = turboValidationReport.physicalAnchorDiagnostic
+                            if (diag != null) {
+                                if (diag.anchorObjects.isNotEmpty()) {
+                                    Text(
+                                        text = "ANCHOR_OBJECTS: [${diag.anchorObjects.joinToString(", ")}]",
+                                        fontSize = 10.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        color = ElyTextSecondary
+                                    )
+                                }
+                                if (diag.collisionFlags.isNotEmpty()) {
+                                    Text(
+                                        text = "COLLISION_FLAGS: [${diag.collisionFlags.joinToString(", ")}]",
+                                        fontSize = 10.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        color = ElyAmberWarning
+                                    )
+                                }
+                                if (diag.failReason != null) {
+                                    Text(
+                                        text = diag.failReason,
+                                        fontSize = 10.sp,
+                                        color = ElyAmberWarning
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // -------------------------------------------------------------
+            // ROOM 05 RUSTIC ACOUSTIC CONSTRAINT (NON-DESTRUCTIVE DOWNSTREAM INTENT)
+            // -------------------------------------------------------------
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color(0xFF141C1A))
+                        .border(1.dp, Color(0xFF00AA88).copy(alpha = 0.35f), RoundedCornerShape(12.dp))
+                        .padding(12.dp)
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.MusicNote,
+                                    contentDescription = null,
+                                    tint = Color(0xFF00E5AA),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(
+                                    text = activeAcousticConstraint.constraintId,
+                                    fontSize = 11.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF00E5AA)
+                                )
+                            }
+                            Text(
+                                text = "DOWNSTREAM INTENT (v${activeAcousticConstraint.schemaVersion})",
+                                fontSize = 9.sp,
+                                fontFamily = FontFamily.Monospace,
+                                color = ElyTextTertiary
+                            )
+                        }
+
+                        Text(
+                            text = "${activeAcousticConstraint.roomProfile} | T60 < ${activeAcousticConstraint.maxT60Seconds}s | Wet < ${(activeAcousticConstraint.maxWetRatioPercent).toInt()}%",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = ElyTextPrimary
+                        )
+
+                        Text(
+                            text = "Spec: ${activeAcousticConstraint.vocalSpec} • ${activeAcousticConstraint.instrumentationSpec}",
+                            fontSize = 10.sp,
+                            color = ElyTextSecondary
+                        )
+
+                        // Locked Sparse Arrangement Constraints v1.0 display
+                        val sparse = activeAcousticConstraint.sparseArrangementConstraints
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Color(0xFF0C1412))
+                                .padding(8.dp)
+                        ) {
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(
+                                    text = "${sparse.constraintId} (LOCKED SPEC)",
+                                    fontSize = 9.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    color = ElyCyanBright
+                                )
+                                Text(
+                                    text = "1. Percussion Suppression: Zero kicks, snares, hats, loops",
+                                    fontSize = 9.sp,
+                                    color = ElyTextSecondary
+                                )
+                                Text(
+                                    text = "2. Pad Suppression: Zero synths, drones, bowed strings, washes",
+                                    fontSize = 9.sp,
+                                    color = ElyTextSecondary
+                                )
+                                Text(
+                                    text = "3. Acoustic Core: ${sparse.coreAcousticRealization}",
+                                    fontSize = 9.sp,
+                                    color = ElyTextSecondary
+                                )
+                                Text(
+                                    text = "4. Expansion: ${sparse.sectionalExpansionRule}",
+                                    fontSize = 9.sp,
+                                    color = ElyTextSecondary
+                                )
+                                Text(
+                                    text = "5. Dynamic Restraint: ${sparse.dynamicRestraintProfile} (No swells/risers)",
+                                    fontSize = 9.sp,
+                                    color = ElyTextSecondary
+                                )
+                                Text(
+                                    text = "6. Arrangement Drift Target: ${(sparse.arrangementDriftTargetPercent).toInt()}% (Locked Instrument Allocation)",
+                                    fontSize = 9.sp,
+                                    color = ElyTextSecondary
+                                )
+                            }
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(Color(0xFF102820))
+                                .padding(horizontal = 6.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = "🔒 DECLARED PRODUCTION CONSTRAINTS ≠ MEASURED AUDIO EVIDENCE (Forensic PCM evaluated in App 03)",
+                                fontSize = 9.sp,
+                                fontFamily = FontFamily.Monospace,
+                                color = Color(0xFF00E5AA).copy(alpha = 0.8f)
                             )
                         }
                     }
