@@ -229,7 +229,7 @@ class ElyzarethOSViewModel : ViewModel() {
 
     init {
         _windows.value = initializeCanonicalWindows()
-        _activeAppId.value = AppId.CORPUS_CURATOR
+        _activeAppId.value = null // Present Elyzareth OS Desktop Shell first
 
         // Pre-generate a default song
         _activeSong.value = ElyzarethGovernanceEngine.generateLyricSuite("Axiom of Night", "Cyber-Opera", "AABB", "")
@@ -241,11 +241,12 @@ class ElyzarethOSViewModel : ViewModel() {
     private fun initializeCanonicalWindows(): Map<AppId, WindowData> {
         val initialMap = mutableMapOf<AppId, WindowData>()
 
-        // App 02: Corpus Curator / Sitting Room (Foreground Workspace)
+        // App 02: Corpus Curator / Sitting Room (Ready on desktop)
         val metrics02 = tenantManager.allocateAndLaunch(AppId.CORPUS_CURATOR)
+        tenantManager.setMinimized(AppId.CORPUS_CURATOR)
         initialMap[AppId.CORPUS_CURATOR] = WindowData(
             appId = AppId.CORPUS_CURATOR,
-            isMinimized = false,
+            isMinimized = true,
             isMaximized = false,
             isClosed = false,
             offsetX = 8f,
@@ -253,12 +254,12 @@ class ElyzarethOSViewModel : ViewModel() {
             width = 410f,
             height = 560f,
             zIndex = ++zIndexCounter,
-            lifecycleState = TenantLifecycleState.ACTIVE_FOREGROUND,
+            lifecycleState = TenantLifecycleState.MINIMIZED,
             allocatedMemoryMb = metrics02.allocatedMemoryMb
         )
 
-        // App 03: The Integrator (Background ready)
-        val metrics03 = tenantManager.allocateAndLaunch(AppId.INTEGRATOR, AppId.CORPUS_CURATOR)
+        // App 03: The Integrator (Ready on desktop)
+        val metrics03 = tenantManager.allocateAndLaunch(AppId.INTEGRATOR)
         tenantManager.setMinimized(AppId.INTEGRATOR)
         initialMap[AppId.INTEGRATOR] = WindowData(
             appId = AppId.INTEGRATOR,
@@ -274,8 +275,8 @@ class ElyzarethOSViewModel : ViewModel() {
             allocatedMemoryMb = metrics03.allocatedMemoryMb
         )
 
-        // App 01: Lyric Studio (Minimized in background)
-        val metrics01 = tenantManager.allocateAndLaunch(AppId.LYRIC_GENERATOR, AppId.CORPUS_CURATOR)
+        // App 01: Lyric Studio (Ready on desktop)
+        val metrics01 = tenantManager.allocateAndLaunch(AppId.LYRIC_GENERATOR)
         tenantManager.setMinimized(AppId.LYRIC_GENERATOR)
         initialMap[AppId.LYRIC_GENERATOR] = WindowData(
             appId = AppId.LYRIC_GENERATOR,
@@ -289,6 +290,40 @@ class ElyzarethOSViewModel : ViewModel() {
             zIndex = ++zIndexCounter,
             lifecycleState = TenantLifecycleState.MINIMIZED,
             allocatedMemoryMb = metrics01.allocatedMemoryMb * 0.75f
+        )
+
+        // App 04: Governance Matrix (Ready on desktop)
+        val metrics04 = tenantManager.allocateAndLaunch(AppId.ENGINE_TERMINAL)
+        tenantManager.setMinimized(AppId.ENGINE_TERMINAL)
+        initialMap[AppId.ENGINE_TERMINAL] = WindowData(
+            appId = AppId.ENGINE_TERMINAL,
+            isMinimized = true,
+            isMaximized = false,
+            isClosed = false,
+            offsetX = 20f,
+            offsetY = 32f,
+            width = 360f,
+            height = 510f,
+            zIndex = ++zIndexCounter,
+            lifecycleState = TenantLifecycleState.MINIMIZED,
+            allocatedMemoryMb = metrics04.allocatedMemoryMb
+        )
+
+        // App 05: Space Archive (Ready on desktop)
+        val metrics05 = tenantManager.allocateAndLaunch(AppId.SPACE_ARCHIVE)
+        tenantManager.setMinimized(AppId.SPACE_ARCHIVE)
+        initialMap[AppId.SPACE_ARCHIVE] = WindowData(
+            appId = AppId.SPACE_ARCHIVE,
+            isMinimized = true,
+            isMaximized = false,
+            isClosed = false,
+            offsetX = 16f,
+            offsetY = 40f,
+            width = 380f,
+            height = 530f,
+            zIndex = ++zIndexCounter,
+            lifecycleState = TenantLifecycleState.MINIMIZED,
+            allocatedMemoryMb = metrics05.allocatedMemoryMb
         )
 
         return initialMap
@@ -1103,6 +1138,55 @@ class ElyzarethOSViewModel : ViewModel() {
             GovernanceDispositionChoice.PENDING_HUMAN_GOVERNOR -> {
                 showToast("⚪ Disposition reset to Pending Review")
             }
+        }
+    }
+
+    fun updateHumanEarReview(
+        baseId: String,
+        versionId: String,
+        review: HumanEarReview
+    ) {
+        val base = _baseCompositions.value.find { it.id == baseId } ?: return
+        val version = base.versions.find { it.versionId == versionId } ?: return
+        val updatedVersion = version.copy(humanEarReview = review)
+        val updatedVersions = base.versions.map { if (it.versionId == versionId) updatedVersion else it }
+        val updatedBase = base.copy(versions = updatedVersions)
+        _baseCompositions.value = _baseCompositions.value.map { if (it.id == baseId) updatedBase else it }
+    }
+
+    fun commitHumanEarDisposition(
+        baseId: String,
+        versionId: String,
+        disposition: HumanEarDisposition,
+        notes: String = ""
+    ) {
+        val base = _baseCompositions.value.find { it.id == baseId } ?: return
+        val version = base.versions.find { it.versionId == versionId } ?: return
+        val currentReview = version.humanEarReview ?: HumanEarReview()
+        val updatedReview = currentReview.copy(
+            isListened = true,
+            disposition = disposition,
+            curatorNotes = notes,
+            reviewerTimestamp = System.currentTimeMillis(),
+            isHumanWitnessWitnessed = true
+        )
+        val updatedVersion = version.copy(humanEarReview = updatedReview)
+        val updatedVersions = base.versions.map { if (it.versionId == versionId) updatedVersion else it }
+        val updatedBase = base.copy(versions = updatedVersions)
+        _baseCompositions.value = _baseCompositions.value.map { if (it.id == baseId) updatedBase else it }
+
+        addAuditLog(
+            layer = "HUMAN_EAR_REVIEW",
+            message = "EAR REVIEW [${disposition.label}]: Human Curator assigned ${disposition.label} to '${base.title} (${version.versionId})'. Notes: ${notes.ifEmpty { "None" }}",
+            hashStamp = version.sha256Hash
+        )
+
+        when (disposition) {
+            HumanEarDisposition.KEEP -> showToast("🎧 Ear Review: KEEP — Approved for Vault Disposition")
+            HumanEarDisposition.CURE -> showToast("🎧 Ear Review: CURE — Phrasing defect flagged for Cure Chamber")
+            HumanEarDisposition.REJECT -> showToast("🎧 Ear Review: REJECT — Performance defect flagged. Permanent reject.")
+            HumanEarDisposition.FREEZE -> showToast("🎧 Ear Review: FREEZE — Specimen verified & frozen.")
+            HumanEarDisposition.PENDING_REVIEW -> showToast("🎧 Ear Review: Reset to Pending Review")
         }
     }
 

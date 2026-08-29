@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.model.*
+import com.example.ui.components.ForensicWitnessPlayerDeck
 import com.example.ui.theme.*
 
 /**
@@ -87,6 +88,8 @@ fun CorpusCuratorApp(
     onIngressAudioDecoderPassChange: (Boolean) -> Unit = {},
     onCommitIngress: () -> Unit = {},
     onCommitHumanGovernorDisposition: (GovernanceDispositionChoice, String) -> Unit = { _, _ -> },
+    onCommitHumanEarDisposition: (String, String, HumanEarDisposition, String) -> Unit = { _, _, _, _ -> },
+    onUpdateHumanEarReview: (String, String, HumanEarReview) -> Unit = { _, _, _ -> },
     onIngestSafFolder: (Context, Uri) -> Unit = { _, _ -> },
     onIngestSafDocument: (Context, Uri) -> Unit = { _, _ -> },
     onStartSafScan: (Context, Uri) -> Unit = { _, _ -> }
@@ -124,13 +127,14 @@ fun CorpusCuratorApp(
     val selectedVersion = selectedBase?.versions?.find { it.versionId == selectedVersionId }
         ?: selectedBase?.versions?.firstOrNull()
 
-    // Normalize curatorial view tab
+    // Normalize curatorial view tab: INGEST → VERIFY → MEASURE → HUMAN EAR REVIEW → DISPOSITION
     val currentTab = when (sittingRoomTab.uppercase()) {
         "DRY RUN", "DRY RUN (~390)", "DRY_RUN", "INVENTORY" -> "DRY RUN (~390)"
         "ALL" -> "DRY RUN (~390)"
         "LYRIC", "WITNESS" -> "WITNESS"
         "AUDIO", "EXAMINATION" -> "EXAMINATION"
         "EVIDENCE", "FINDINGS" -> "FINDINGS"
+        "EAR REVIEW", "HUMAN EAR REVIEW", "LISTENING", "FORENSIC LISTENING" -> "HUMAN EAR REVIEW"
         "DISPOSITION" -> "DISPOSITION"
         "HISTORY", "AUDIT", "AUDIT & TECHNICAL" -> "AUDIT & TECHNICAL"
         else -> "DRY RUN (~390)"
@@ -253,6 +257,8 @@ fun CorpusCuratorApp(
                     onAccept = onAccept,
                     onSendToEngine = onSendToEngine,
                     onCommitHumanGovernorDisposition = onCommitHumanGovernorDisposition,
+                    onCommitHumanEarDisposition = onCommitHumanEarDisposition,
+                    onUpdateHumanEarReview = onUpdateHumanEarReview,
                     onStartSafScan = onStartSafScan
                 )
             } else {
@@ -511,7 +517,7 @@ fun CorpusCuratorApp(
                                     .padding(3.dp),
                                 horizontalArrangement = Arrangement.spacedBy(3.dp)
                             ) {
-                                val tabs = listOf("DRY RUN (~390)", "WITNESS", "EXAMINATION", "FINDINGS", "DISPOSITION", "AUDIT & TECHNICAL")
+                                val tabs = listOf("DRY RUN (~390)", "WITNESS", "EXAMINATION", "FINDINGS", "HUMAN EAR REVIEW", "DISPOSITION", "AUDIT & TECHNICAL")
                                 tabs.forEach { tab ->
                                     val isTabSelected = (currentTab == tab)
                                     Box(
@@ -555,6 +561,12 @@ fun CorpusCuratorApp(
                                     "WITNESS" -> DesktopWitnessView(selectedVersion)
                                     "EXAMINATION" -> ExaminationSectionView(selectedVersion)
                                     "FINDINGS" -> FindingsSectionView(selectedVersion)
+                                    "HUMAN EAR REVIEW", "EAR REVIEW" -> HumanEarReviewSectionView(
+                                        baseComposition = selectedBase,
+                                        selectedVersion = selectedVersion,
+                                        onCommitHumanEarDisposition = onCommitHumanEarDisposition,
+                                        onUpdateHumanEarReview = onUpdateHumanEarReview
+                                    )
                                     "DISPOSITION" -> DispositionSectionView(
                                         selectedVersion = selectedVersion,
                                         onPreserve = onPreserve,
@@ -1001,6 +1013,8 @@ private fun MobileCuratorialWorkspace(
     onAccept: () -> Unit,
     onSendToEngine: () -> Unit,
     onCommitHumanGovernorDisposition: (GovernanceDispositionChoice, String) -> Unit,
+    onCommitHumanEarDisposition: (String, String, HumanEarDisposition, String) -> Unit = { _, _, _, _ -> },
+    onUpdateHumanEarReview: (String, String, HumanEarReview) -> Unit = { _, _, _ -> },
     onStartSafScan: (Context, Uri) -> Unit = { _, _ -> }
 ) {
     if (currentTab == "DRY RUN" || currentTab == "DRY RUN (~390)") {
@@ -1018,7 +1032,7 @@ private fun MobileCuratorialWorkspace(
                     .padding(2.dp),
                 horizontalArrangement = Arrangement.spacedBy(2.dp)
             ) {
-                val sections = listOf("DRY RUN", "ALL", "WITNESS", "EXAMINATION", "FINDINGS", "DISPOSITION")
+                val sections = listOf("DRY RUN", "ALL", "WITNESS", "EXAMINATION", "FINDINGS", "HUMAN EAR REVIEW", "DISPOSITION")
                 sections.forEach { sec ->
                     val isSelected = currentTab.startsWith(sec)
                     Box(
@@ -1032,7 +1046,7 @@ private fun MobileCuratorialWorkspace(
                     ) {
                         Text(
                             text = sec,
-                            fontSize = 8.sp,
+                            fontSize = 7.5.sp,
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                             fontFamily = FontFamily.Monospace,
                             color = if (isSelected) ElyPurple else ElyTextSecondary,
@@ -1134,7 +1148,7 @@ private fun MobileCuratorialWorkspace(
                 .padding(2.dp),
             horizontalArrangement = Arrangement.spacedBy(2.dp)
         ) {
-            val sections = listOf("DRY RUN", "ALL", "WITNESS", "EXAMINATION", "FINDINGS", "DISPOSITION")
+            val sections = listOf("DRY RUN", "ALL", "WITNESS", "EXAMINATION", "FINDINGS", "HUMAN EAR REVIEW", "DISPOSITION")
             sections.forEach { sec ->
                 val isSelected = currentTab == sec
                 Box(
@@ -1148,7 +1162,7 @@ private fun MobileCuratorialWorkspace(
                 ) {
                     Text(
                         text = sec,
-                        fontSize = 8.sp,
+                        fontSize = 7.5.sp,
                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                         fontFamily = FontFamily.Monospace,
                         color = if (isSelected) ElyPurple else ElyTextSecondary,
@@ -1186,9 +1200,20 @@ private fun MobileCuratorialWorkspace(
                 FindingsSectionView(selectedVersion)
             }
 
-            // 4. DISPOSITION SECTION
+            // 4. HUMAN EAR REVIEW (FORENSIC LISTENING LAYER)
+            if (currentTab == "ALL" || currentTab == "HUMAN EAR REVIEW" || currentTab == "EAR REVIEW") {
+                SectionHeaderBadge("4. HUMAN EAR REVIEW", "FORENSIC LISTENING LAYER & AUDITORY DEFECT SCREENING", ElyPurple)
+                HumanEarReviewSectionView(
+                    baseComposition = selectedBase,
+                    selectedVersion = selectedVersion,
+                    onCommitHumanEarDisposition = onCommitHumanEarDisposition,
+                    onUpdateHumanEarReview = onUpdateHumanEarReview
+                )
+            }
+
+            // 5. DISPOSITION SECTION
             if (currentTab == "ALL" || currentTab == "DISPOSITION") {
-                SectionHeaderBadge("4. DISPOSITION", "HUMAN GOVERNOR PROTOCOL (3.2.1.0)", ElyAmberWarning)
+                SectionHeaderBadge("5. DISPOSITION", "HUMAN GOVERNOR PROTOCOL (3.2.1.0)", ElyAmberWarning)
                 DispositionSectionView(
                     selectedVersion = selectedVersion,
                     onPreserve = onPreserve,
@@ -1703,6 +1728,556 @@ private fun FindingsSectionView(selectedVersion: SpecimenVersionNode) {
                     fontSize = 8.5.sp,
                     color = ElyTextTertiary
                 )
+            }
+        }
+    }
+}
+
+// ==============================================================================
+// 4B. DEDICATED FORENSIC LISTENING LAYER (HUMAN EAR REVIEW)
+// ==============================================================================
+@Composable
+private fun HumanEarReviewSectionView(
+    baseComposition: BaseComposition?,
+    selectedVersion: SpecimenVersionNode?,
+    onCommitHumanEarDisposition: (String, String, HumanEarDisposition, String) -> Unit,
+    onUpdateHumanEarReview: (String, String, HumanEarReview) -> Unit
+) {
+    if (selectedVersion == null || baseComposition == null) {
+        Box(
+            modifier = Modifier.fillMaxSize().padding(16.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text("Select a verified specimen to initiate Human Ear Review", color = ElyTextSecondary, fontSize = 11.sp)
+        }
+        return
+    }
+
+    val currentReview = selectedVersion.humanEarReview ?: HumanEarReview()
+    var awkwardWording by remember(selectedVersion.versionId, selectedVersion.humanEarReview) {
+        mutableStateOf(selectedVersion.humanEarReview?.hasAwkwardWording ?: false)
+    }
+    var foreignInjection by remember(selectedVersion.versionId, selectedVersion.humanEarReview) {
+        mutableStateOf(selectedVersion.humanEarReview?.hasForeignLanguageInjection ?: false)
+    }
+    var pronunciationAnomalies by remember(selectedVersion.versionId, selectedVersion.humanEarReview) {
+        mutableStateOf(selectedVersion.humanEarReview?.hasPronunciationAnomalies ?: false)
+    }
+    var lyricMismatch by remember(selectedVersion.versionId, selectedVersion.humanEarReview) {
+        mutableStateOf(selectedVersion.humanEarReview?.hasLyricAudioMismatch ?: false)
+    }
+    var unnaturalPhrasing by remember(selectedVersion.versionId, selectedVersion.humanEarReview) {
+        mutableStateOf(selectedVersion.humanEarReview?.hasUnnaturalSungPhrasing ?: false)
+    }
+    var performanceAnomalies by remember(selectedVersion.versionId, selectedVersion.humanEarReview) {
+        mutableStateOf(selectedVersion.humanEarReview?.hasPerformanceAnomaly ?: false)
+    }
+    var curatorNotes by remember(selectedVersion.versionId, selectedVersion.humanEarReview) {
+        mutableStateOf(selectedVersion.humanEarReview?.curatorNotes ?: "")
+    }
+
+    val audioWitness = selectedVersion.audioWitness
+    val isAudioMeasured = audioWitness != null && audioWitness.isMeasured
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        // 1. FORENSIC WORKFLOW BANNER (INGEST → VERIFY → MEASURE → HUMAN EAR REVIEW → DISPOSITION)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(6.dp))
+                .background(Color(0xFF141923))
+                .border(1.dp, ElyPurple.copy(alpha = 0.5f), RoundedCornerShape(6.dp))
+                .padding(8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = "🎧 FORENSIC LISTENING LAYER",
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
+                        color = ElyPurple
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(Color(currentReview.disposition.badgeColor).copy(alpha = 0.2f))
+                        .border(0.5.dp, Color(currentReview.disposition.badgeColor), RoundedCornerShape(3.dp))
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = currentReview.disposition.label,
+                        fontSize = 8.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(currentReview.disposition.badgeColor)
+                    )
+                }
+            }
+
+            Text(
+                text = "Machine proves the artifact. The player lets the human hear the artifact. The curator decides.",
+                fontSize = 9.sp,
+                color = ElyTextSecondary
+            )
+
+            // Workflow Pipeline Track: INGEST → VERIFY → MEASURE → HUMAN EAR REVIEW → DISPOSITION
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(Color(0xFF0D1117))
+                    .padding(horizontal = 6.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                WorkflowStepChip("INGEST", true)
+                Text("→", fontSize = 8.sp, color = ElyTextTertiary)
+                WorkflowStepChip("VERIFY", true)
+                Text("→", fontSize = 8.sp, color = ElyTextTertiary)
+                WorkflowStepChip("MEASURE", isAudioMeasured)
+                Text("→", fontSize = 8.sp, color = ElyTextTertiary)
+                WorkflowStepChip("HUMAN EAR REVIEW", true, isCurrent = true)
+                Text("→", fontSize = 8.sp, color = ElyTextTertiary)
+                WorkflowStepChip("DISPOSITION", currentReview.disposition != HumanEarDisposition.PENDING_REVIEW)
+            }
+
+            // Invariant chips
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                ForensicInvariantPill("SOURCE READ-ONLY", ElyG3Axiom)
+                ForensicInvariantPill("SHA-256 IMMUTABLE", ElyG3Axiom)
+                ForensicInvariantPill(if (isAudioMeasured) "PCM VERIFIED" else "AUDIO NOT_MEASURED", if (isAudioMeasured) ElyG3Axiom else ElyAmberWarning)
+                ForensicInvariantPill("G1/G2 PRESERVED", ElyG3Axiom)
+            }
+        }
+
+        // 2. THE WINAMP-STYLE FORENSIC WITNESS PLAYER DECK
+        ForensicWitnessPlayerDeck(
+            specimen = selectedVersion,
+            songTitle = baseComposition.title,
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        // 3. CURATOR AUDITORY DEFECT SCREENING CHECKLIST & LYRICS REFERENCE
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            // Left Column: 6 Auditory Defect Screening Checklist
+            Column(
+                modifier = Modifier
+                    .weight(1.1f)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(ElyHeaderGlass)
+                    .border(0.5.dp, ElyWindowBorderInactive, RoundedCornerShape(6.dp))
+                    .padding(8.dp),
+                verticalArrangement = Arrangement.spacedBy(5.dp)
+            ) {
+                Text(
+                    text = "AUDITORY WITNESS SCREENING",
+                    fontSize = 9.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    color = ElyTextPrimary
+                )
+                Text(
+                    text = "Listen specifically for linguistic & musical delivery defects:",
+                    fontSize = 8.sp,
+                    color = ElyTextSecondary
+                )
+
+                AuditoryChecklistItem(
+                    title = "Awkward / Unnatural wording",
+                    subtitle = "Phrases that sound unnatural or grammatically distorted when sung",
+                    isChecked = awkwardWording,
+                    onToggle = {
+                        val updated = !awkwardWording
+                        awkwardWording = updated
+                        onUpdateHumanEarReview(
+                            baseComposition.id,
+                            selectedVersion.versionId,
+                            currentReview.copy(hasAwkwardWording = updated)
+                        )
+                    }
+                )
+
+                AuditoryChecklistItem(
+                    title = "Unexpected foreign-language injection",
+                    subtitle = "Unintentional foreign words or phonetic garble injected into vocal stream",
+                    isChecked = foreignInjection,
+                    onToggle = {
+                        val updated = !foreignInjection
+                        foreignInjection = updated
+                        onUpdateHumanEarReview(
+                            baseComposition.id,
+                            selectedVersion.versionId,
+                            currentReview.copy(hasForeignLanguageInjection = updated)
+                        )
+                    }
+                )
+
+                AuditoryChecklistItem(
+                    title = "Pronunciation anomalies",
+                    subtitle = "Mispronounced syllables, artificial vowels, or robotic cadence",
+                    isChecked = pronunciationAnomalies,
+                    onToggle = {
+                        val updated = !pronunciationAnomalies
+                        pronunciationAnomalies = updated
+                        onUpdateHumanEarReview(
+                            baseComposition.id,
+                            selectedVersion.versionId,
+                            currentReview.copy(hasPronunciationAnomalies = updated)
+                        )
+                    }
+                )
+
+                AuditoryChecklistItem(
+                    title = "Lyric / Audio mismatch",
+                    subtitle = "Vocalist sings words that diverge from canonical lyric text witness",
+                    isChecked = lyricMismatch,
+                    onToggle = {
+                        val updated = !lyricMismatch
+                        lyricMismatch = updated
+                        onUpdateHumanEarReview(
+                            baseComposition.id,
+                            selectedVersion.versionId,
+                            currentReview.copy(hasLyricAudioMismatch = updated)
+                        )
+                    }
+                )
+
+                AuditoryChecklistItem(
+                    title = "Unnatural sung phrasing",
+                    subtitle = "Awkward breath placement, rushed meter, or dissonant melody line",
+                    isChecked = unnaturalPhrasing,
+                    onToggle = {
+                        val updated = !unnaturalPhrasing
+                        unnaturalPhrasing = updated
+                        onUpdateHumanEarReview(
+                            baseComposition.id,
+                            selectedVersion.versionId,
+                            currentReview.copy(hasUnnaturalSungPhrasing = updated)
+                        )
+                    }
+                )
+
+                AuditoryChecklistItem(
+                    title = "Performance defect despite gates",
+                    subtitle = "Subjective human-ear unacceptability despite automated verification passing",
+                    isChecked = performanceAnomalies,
+                    onToggle = {
+                        val updated = !performanceAnomalies
+                        performanceAnomalies = updated
+                        onUpdateHumanEarReview(
+                            baseComposition.id,
+                            selectedVersion.versionId,
+                            currentReview.copy(hasPerformanceAnomaly = updated)
+                        )
+                    }
+                )
+            }
+
+            // Right Column: Canonical Lyric Witness Reference
+            Column(
+                modifier = Modifier
+                    .weight(0.9f)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(ElyHeaderGlass)
+                    .border(0.5.dp, ElyWindowBorderInactive, RoundedCornerShape(6.dp))
+                    .padding(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "CANONICAL LYRIC WITNESS",
+                        fontSize = 9.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
+                        color = ElyG3Axiom
+                    )
+                    Text(
+                        text = "${selectedVersion.wordCount} words",
+                        fontSize = 7.5.sp,
+                        fontFamily = FontFamily.Monospace,
+                        color = ElyTextTertiary
+                    )
+                }
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 240.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Color(0xFF0E121A))
+                        .padding(6.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    Text(
+                        text = selectedVersion.lyricText,
+                        fontSize = 8.5.sp,
+                        fontFamily = FontFamily.Monospace,
+                        color = ElyTextPrimary,
+                        lineHeight = 13.sp
+                    )
+                }
+            }
+        }
+
+        // 4. CURATOR EAR OBSERVATIONS & QUALITATIVE NOTES
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(6.dp))
+                .background(ElySurfaceCard)
+                .border(0.5.dp, ElyWindowBorderInactive, RoundedCornerShape(6.dp))
+                .padding(8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(
+                text = "CURATOR QUALITATIVE EAR OBSERVATIONS",
+                fontSize = 8.5.sp,
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Bold,
+                color = ElyTextSecondary
+            )
+            OutlinedTextField(
+                value = curatorNotes,
+                onValueChange = {
+                    curatorNotes = it
+                    onUpdateHumanEarReview(
+                        baseComposition.id,
+                        selectedVersion.versionId,
+                        currentReview.copy(curatorNotes = it)
+                    )
+                },
+                placeholder = {
+                    Text(
+                        "Record auditory observations (e.g., phrasing naturalness, vocal clarity, timbre stability)...",
+                        fontSize = 8.5.sp,
+                        color = ElyTextTertiary
+                    )
+                },
+                modifier = Modifier.fillMaxWidth().height(64.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = ElyPurple,
+                    unfocusedBorderColor = ElyWindowBorderInactive,
+                    focusedTextColor = ElyTextPrimary,
+                    unfocusedTextColor = ElyTextPrimary
+                ),
+                textStyle = LocalTextStyle.current.copy(fontSize = 8.5.sp, fontFamily = FontFamily.Monospace)
+            )
+        }
+
+        // 5. HUMAN EAR DISPOSITION ASSIGNMENT ACTION BAR (KEEP / CURE / REJECT / FREEZE)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(6.dp))
+                .background(Color(0xFF161A22))
+                .border(1.dp, ElyPurple.copy(alpha = 0.4f), RoundedCornerShape(6.dp))
+                .padding(8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "ASSIGN HUMAN EAR DISPOSITION",
+                    fontSize = 9.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    color = ElyTextPrimary
+                )
+                Text(
+                    text = "Human Listening Witness Record",
+                    fontSize = 7.5.sp,
+                    fontFamily = FontFamily.Monospace,
+                    color = ElyTextTertiary
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                // 1. KEEP
+                Button(
+                    onClick = {
+                        onCommitHumanEarDisposition(
+                            baseComposition.id,
+                            selectedVersion.versionId,
+                            HumanEarDisposition.KEEP,
+                            curatorNotes
+                        )
+                    },
+                    modifier = Modifier.weight(1f).height(36.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00783E)),
+                    shape = RoundedCornerShape(4.dp)
+                ) {
+                    Text("🟢 KEEP", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                }
+
+                // 2. CURE
+                Button(
+                    onClick = {
+                        onCommitHumanEarDisposition(
+                            baseComposition.id,
+                            selectedVersion.versionId,
+                            HumanEarDisposition.CURE,
+                            curatorNotes
+                        )
+                    },
+                    modifier = Modifier.weight(1f).height(36.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF996600)),
+                    shape = RoundedCornerShape(4.dp)
+                ) {
+                    Text("🟡 CURE", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                }
+
+                // 3. REJECT
+                Button(
+                    onClick = {
+                        onCommitHumanEarDisposition(
+                            baseComposition.id,
+                            selectedVersion.versionId,
+                            HumanEarDisposition.REJECT,
+                            curatorNotes
+                        )
+                    },
+                    modifier = Modifier.weight(1f).height(36.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8B1A1A)),
+                    shape = RoundedCornerShape(4.dp)
+                ) {
+                    Text("🔴 REJECT", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                }
+
+                // 4. FREEZE
+                Button(
+                    onClick = {
+                        onCommitHumanEarDisposition(
+                            baseComposition.id,
+                            selectedVersion.versionId,
+                            HumanEarDisposition.FREEZE,
+                            curatorNotes
+                        )
+                    },
+                    modifier = Modifier.weight(1f).height(36.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF005E7A)),
+                    shape = RoundedCornerShape(4.dp)
+                ) {
+                    Text("🔵 FREEZE", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun WorkflowStepChip(label: String, isComplete: Boolean, isCurrent: Boolean = false) {
+    val (bg, border, color) = when {
+        isCurrent -> Triple(ElyPurple.copy(alpha = 0.25f), ElyPurple, ElyPurple)
+        isComplete -> Triple(ElyG3Axiom.copy(alpha = 0.15f), ElyG3Axiom.copy(alpha = 0.6f), ElyG3Axiom)
+        else -> Triple(Color(0xFF151820), ElyWindowBorderInactive, ElyTextTertiary)
+    }
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(3.dp))
+            .background(bg)
+            .border(0.5.dp, border, RoundedCornerShape(3.dp))
+            .padding(horizontal = 4.dp, vertical = 2.dp)
+    ) {
+        Text(text = label, fontSize = 7.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, color = color)
+    }
+}
+
+@Composable
+private fun ForensicInvariantPill(text: String, color: Color) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(3.dp))
+            .background(color.copy(alpha = 0.12f))
+            .border(0.5.dp, color.copy(alpha = 0.4f), RoundedCornerShape(3.dp))
+            .padding(horizontal = 4.dp, vertical = 2.dp)
+    ) {
+        Text(text = text, fontSize = 6.5.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, color = color)
+    }
+}
+
+@Composable
+private fun AuditoryChecklistItem(
+    title: String,
+    subtitle: String,
+    isChecked: Boolean,
+    onToggle: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(4.dp))
+            .background(if (isChecked) ElyAmberWarning.copy(alpha = 0.12f) else Color(0xFF12151D))
+            .border(0.5.dp, if (isChecked) ElyAmberWarning.copy(alpha = 0.6f) else ElyWindowBorderInactive, RoundedCornerShape(4.dp))
+            .clickable { onToggle() }
+            .padding(horizontal = 6.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Checkbox(
+            checked = isChecked,
+            onCheckedChange = { onToggle() },
+            modifier = Modifier.size(16.dp),
+            colors = CheckboxDefaults.colors(
+                checkedColor = ElyAmberWarning,
+                checkmarkColor = Color.Black,
+                uncheckedColor = ElyTextTertiary
+            )
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                fontSize = 8.sp,
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Bold,
+                color = if (isChecked) ElyAmberWarning else ElyTextPrimary
+            )
+            Text(
+                text = subtitle,
+                fontSize = 7.sp,
+                color = ElyTextTertiary,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
+        }
+        if (isChecked) {
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(ElyAmberWarning.copy(alpha = 0.2f))
+                    .padding(horizontal = 3.dp, vertical = 1.dp)
+            ) {
+                Text("FLAGGED", fontSize = 6.5.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, color = ElyAmberWarning)
             }
         }
     }

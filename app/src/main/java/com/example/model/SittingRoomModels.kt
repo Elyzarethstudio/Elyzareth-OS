@@ -82,7 +82,32 @@ data class SpecimenVersion(
     val g5Disposition: G5Disposition = G5Disposition(),
     val g6Status: G6Status = G6Status.NOT_SPECIFIED_DEFERRED,
     val governorAuthorization: HumanGovernorAuthorization? = null,
-    val releaseManifest: MasterReleaseManifest? = null
+    val releaseManifest: MasterReleaseManifest? = null,
+    val humanEarReview: HumanEarReview? = null
+)
+
+enum class HumanEarDisposition(val label: String, val badgeColor: Long, val description: String) {
+    PENDING_REVIEW("PENDING REVIEW", 0xFF9E9E9E, "Specimen awaiting physical auditory review by Human Curator."),
+    KEEP("KEEP", 0xFF00E676, "Auditory witness approved: Natural wording, correct pronunciation, intact phrasing."),
+    CURE("CURE", 0xFFFFB300, "Auditory defect detected: Awkward wording, foreign injection, or phrasing anomalies."),
+    REJECT("REJECT", 0xFFFF5252, "Unacceptable musical/linguistic delivery. Permanent reject; immutable witness preserved."),
+    FREEZE("FREEZE", 0xFF00E5FF, "Specimen human-verified and locked into frozen immutable witness archive.")
+}
+
+data class HumanEarReview(
+    val isListened: Boolean = false,
+    val listeningDurationSeconds: Int = 0,
+    val hasAwkwardWording: Boolean = false,
+    val hasForeignLanguageInjection: Boolean = false,
+    val hasPronunciationAnomalies: Boolean = false,
+    val hasLyricAudioMismatch: Boolean = false,
+    val hasUnnaturalSungPhrasing: Boolean = false,
+    val hasPerformanceAnomaly: Boolean = false,
+    val curatorNotes: String = "",
+    val disposition: HumanEarDisposition = HumanEarDisposition.PENDING_REVIEW,
+    val reviewerTimestamp: Long = 0L,
+    val physicalAudioPlayedHash: String? = null,
+    val isHumanWitnessWitnessed: Boolean = false
 )
 
 data class BaseComposition(

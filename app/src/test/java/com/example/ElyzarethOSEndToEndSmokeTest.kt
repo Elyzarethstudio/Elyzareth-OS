@@ -239,30 +239,35 @@ class ElyzarethOSEndToEndSmokeTest {
 
     @Test
     fun test08_app02_persistenceAndColdRestartIntegrity() {
-        // 1. Initial Cold Launch Verification
+        // 1. Initial Cold Launch Verification: Desktop presented with all 5 canonical tenants ready
         assertTrue("App 02 must be in canonical AppId registry", AppId.values().contains(AppId.CORPUS_CURATOR))
         assertTrue("App 02 window must be initialized on launch", viewModel.windows.value.containsKey(AppId.CORPUS_CURATOR))
-        assertEquals("App 02 must be foreground active on launch", AppId.CORPUS_CURATOR, viewModel.activeAppId.value)
         assertFalse("App 02 must not be closed on launch", viewModel.windows.value[AppId.CORPUS_CURATOR]!!.isClosed)
+
+        // Launch App 02 from OS Desktop
+        viewModel.openApp(AppId.CORPUS_CURATOR)
+        assertEquals("App 02 must be foreground active after launch", AppId.CORPUS_CURATOR, viewModel.activeAppId.value)
+        assertFalse("App 02 window must not be minimized after launch", viewModel.windows.value[AppId.CORPUS_CURATOR]!!.isMinimized)
 
         // 2. Cold Restart 1: Simulate complete process termination & fresh restart
         val coldRestartVm1 = ElyzarethOSViewModel()
         assertTrue("Cold Restart 1: App 02 must be in registry", AppId.values().contains(AppId.CORPUS_CURATOR))
         assertTrue("Cold Restart 1: App 02 must be initialized in windows", coldRestartVm1.windows.value.containsKey(AppId.CORPUS_CURATOR))
-        assertEquals("Cold Restart 1: App 02 must be active foreground", AppId.CORPUS_CURATOR, coldRestartVm1.activeAppId.value)
         assertFalse("Cold Restart 1: App 02 window must not be closed", coldRestartVm1.windows.value[AppId.CORPUS_CURATOR]!!.isClosed)
+        coldRestartVm1.openApp(AppId.CORPUS_CURATOR)
+        assertEquals("Cold Restart 1: App 02 must be active foreground after open", AppId.CORPUS_CURATOR, coldRestartVm1.activeAppId.value)
 
         // 3. Cold Restart 2: Simulate second process termination & fresh restart
         val coldRestartVm2 = ElyzarethOSViewModel()
         assertTrue("Cold Restart 2: App 02 must be in registry", AppId.values().contains(AppId.CORPUS_CURATOR))
         assertTrue("Cold Restart 2: App 02 must be initialized in windows", coldRestartVm2.windows.value.containsKey(AppId.CORPUS_CURATOR))
-        assertEquals("Cold Restart 2: App 02 must be active foreground", AppId.CORPUS_CURATOR, coldRestartVm2.activeAppId.value)
         assertFalse("Cold Restart 2: App 02 window must not be closed", coldRestartVm2.windows.value[AppId.CORPUS_CURATOR]!!.isClosed)
+        coldRestartVm2.openApp(AppId.CORPUS_CURATOR)
+        assertEquals("Cold Restart 2: App 02 must be active foreground after open", AppId.CORPUS_CURATOR, coldRestartVm2.activeAppId.value)
 
         // 4. Soft Reboot Verification
         coldRestartVm2.restartOS()
         assertTrue("Reboot: App 02 window must be restored in windows map", coldRestartVm2.windows.value.containsKey(AppId.CORPUS_CURATOR))
-        assertEquals("Reboot: App 02 must be restored as active tenant", AppId.CORPUS_CURATOR, coldRestartVm2.activeAppId.value)
     }
 
     @Test

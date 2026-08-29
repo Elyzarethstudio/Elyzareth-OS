@@ -139,47 +139,199 @@ fun DesktopEnvironment(
         // Dynamic Desktop Wallpaper Canvas
         DesktopWallpaperCanvas(wallpaper = wallpaper)
 
-        // Desktop Shortcuts (Top-Left grid)
+        // Elyzareth OS Desktop Workspace Canvas (Visible when windows are minimized/open)
         Column(
             modifier = Modifier
-                .padding(top = 40.dp, start = 16.dp)
-                .wrapContentSize(),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .fillMaxSize()
+                .padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 72.dp),
+            verticalArrangement = Arrangement.SpaceBetween
         ) {
-            AppId.values().forEach { appId ->
-                DesktopShortcutIcon(
-                    appId = appId,
-                    onClick = { viewModel.openApp(appId) }
-                )
-            }
-        }
-
-        // Desktop Center Watermark / Branding
-        Box(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .offset(y = (-40).dp),
-            contentAlignment = Alignment.Center
-        ) {
+            // Top OS Bar & Center Branding
             Column(
+                modifier = Modifier.fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
+                // OS Status Pill
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(ElyHeaderGlass)
+                        .border(0.5.dp, ElyCyan.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                        .padding(horizontal = 12.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(ElyG3Axiom))
+                    Text(
+                        text = "ELYZARETH OS V3.2.1 • FORENSIC WORKSPACE • G3 ACTIVE",
+                        fontSize = 8.5.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
+                        color = ElyCyan
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
                 Text(
                     text = "ELYZARETH OS",
-                    fontSize = 24.sp,
+                    fontSize = 26.sp,
                     fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.ExtraBold,
-                    color = Color.White.copy(alpha = 0.08f),
-                    letterSpacing = 8.sp
+                    color = Color.White.copy(alpha = 0.88f),
+                    letterSpacing = 6.sp
                 )
                 Text(
                     text = "ONE SPACE // FIVE TENANTS // FORENSIC WORKSPACE",
                     fontSize = 9.sp,
                     fontFamily = FontFamily.Monospace,
-                    color = ElyCyan.copy(alpha = 0.12f),
+                    color = ElyCyan.copy(alpha = 0.75f),
                     letterSpacing = 2.sp
                 )
+            }
+
+            // Five Tenant Entry Cards Grid (Center of Desktop Shell)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = "SOVEREIGN TENANTS // ACTIVE DOMAINS",
+                    fontSize = 8.5.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    color = ElyTextSecondary,
+                    letterSpacing = 1.sp
+                )
+
+                AppId.values().forEach { appId ->
+                    val isRunning = windows[appId]?.isClosed == false
+                    val isForeground = activeAppId == appId && windows[appId]?.isMinimized == false
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(
+                                if (isForeground) ElyPurple.copy(alpha = 0.22f)
+                                else ElySurfaceCard.copy(alpha = 0.85f)
+                            )
+                            .border(
+                                width = if (isForeground) 1.dp else 0.5.dp,
+                                color = if (isForeground) ElyPurple else ElyWindowBorderInactive,
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                            .clickable { viewModel.openApp(appId) }
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(
+                                    Brush.linearGradient(
+                                        listOf(
+                                            when (appId) {
+                                                AppId.LYRIC_GENERATOR -> ElyCyan
+                                                AppId.CORPUS_CURATOR -> ElyPurple
+                                                AppId.INTEGRATOR -> ElyCyanBright
+                                                AppId.ENGINE_TERMINAL -> ElyG3Axiom
+                                                AppId.SPACE_ARCHIVE -> ElyIndigo
+                                            },
+                                            Color(0xFF0F172A)
+                                        )
+                                    )
+                                )
+                                .border(0.5.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(8.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = appId.defaultIcon,
+                                contentDescription = appId.title,
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = appId.tenantNumber,
+                                    fontSize = 7.5.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    color = when (appId) {
+                                        AppId.LYRIC_GENERATOR -> ElyCyan
+                                        AppId.CORPUS_CURATOR -> ElyPurple
+                                        AppId.INTEGRATOR -> ElyCyanBright
+                                        AppId.ENGINE_TERMINAL -> ElyG3Axiom
+                                        AppId.SPACE_ARCHIVE -> ElyIndigo
+                                    }
+                                )
+                                Text(
+                                    text = "•",
+                                    fontSize = 7.5.sp,
+                                    color = ElyTextTertiary
+                                )
+                                Text(
+                                    text = appId.title,
+                                    fontSize = 10.5.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    color = ElyTextPrimary
+                                )
+                            }
+                            Text(
+                                text = appId.subtitle,
+                                fontSize = 8.sp,
+                                color = ElyTextSecondary,
+                                maxLines = 1
+                            )
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(if (isRunning) ElyG3Axiom.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.05f))
+                                .border(
+                                    0.5.dp,
+                                    if (isRunning) ElyG3Axiom.copy(alpha = 0.6f) else ElyWindowBorderInactive,
+                                    RoundedCornerShape(4.dp)
+                                )
+                                .padding(horizontal = 6.dp, vertical = 3.dp)
+                        ) {
+                            Text(
+                                text = if (isRunning) "LAUNCHED" else "OPEN",
+                                fontSize = 7.5.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isRunning) ElyG3Axiom else ElyTextSecondary
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Bottom Quick Tips
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(Color(0xFF0C1018))
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Tap any tenant to open in window shell", fontSize = 7.5.sp, color = ElyTextTertiary)
+                Text("Taskbar controls below", fontSize = 7.5.sp, color = ElyCyan.copy(alpha = 0.7f))
             }
         }
 
@@ -286,6 +438,8 @@ fun DesktopEnvironment(
                             onIngressAudioDecoderPassChange = viewModel::setIngressAudioDecoderPass,
                             onCommitIngress = viewModel::commitSpecimenIngress,
                             onCommitHumanGovernorDisposition = viewModel::commitHumanGovernorDisposition,
+                            onCommitHumanEarDisposition = viewModel::commitHumanEarDisposition,
+                            onUpdateHumanEarReview = viewModel::updateHumanEarReview,
                             onIngestSafFolder = viewModel::ingestFromSafFolderUri,
                             onIngestSafDocument = viewModel::ingestFromSafDocumentUri,
                             onStartSafScan = viewModel::scanCorpusDirectoryDryRun
