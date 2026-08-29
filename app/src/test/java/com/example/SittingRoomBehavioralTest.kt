@@ -368,4 +368,179 @@ class SittingRoomBehavioralTest {
         assertFalse(textOnlySpecimen.g5Disposition.isAutomatedAI)
         assertFalse(textOnlySpecimen.g5Disposition.isHumanGovernorAuthorized)
     }
+
+    @Test
+    fun test12_CorpusDiscoveryDryRun_ReadOnlyInventoryAndEvidenceDistinction() {
+        // Build a simulated corpus representing a 390 base titles / 700+ artifacts collection
+        val sampleRecords = mutableListOf<DiscoveredArtifactRecord>()
+
+        // 1. Valid Hindi Lyric
+        sampleRecords.add(
+            DiscoveredArtifactRecord(
+                id = "ART-001",
+                documentUri = "content://saf/tree/doc/01",
+                fileName = "mera_pyar_tera_sahara_v1.txt",
+                relativePath = "Mera Pyar Tera Sahara/mera_pyar_tera_sahara_v1.txt",
+                fileExtension = "txt",
+                fileSizeBytes = 1024L,
+                lastModified = 1700000000L,
+                mimeType = "text/plain",
+                sha256Hash = "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+                category = ArtifactCategory.LYRIC_TEXT,
+                discoveryState = IngestionDiscoveryState.PARSED,
+                isParsedSuccessfully = true,
+                detectedBaseTitle = "Mera Pyar Tera Sahara",
+                detectedVersionLabel = "v01",
+                detectedLanguage = "Hindi (Romanized)",
+                lineCount = 16,
+                wordCount = 95,
+                characterCount = 480,
+                snippetText = "Tera pyar mera sahara, dil ka yeh kinara...",
+                parseErrorMessage = null
+            )
+        )
+
+        // 2. Dual-Witness Companion Schema (.json)
+        sampleRecords.add(
+            DiscoveredArtifactRecord(
+                id = "ART-002",
+                documentUri = "content://saf/tree/doc/02",
+                fileName = "mera_pyar_tera_sahara_v1_witness.json",
+                relativePath = "Mera Pyar Tera Sahara/mera_pyar_tera_sahara_v1_witness.json",
+                fileExtension = "json",
+                fileSizeBytes = 512L,
+                lastModified = 1700000000L,
+                mimeType = "application/json",
+                sha256Hash = "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+                category = ArtifactCategory.STRUCTURED_SCHEMA,
+                discoveryState = IngestionDiscoveryState.PARSED,
+                isParsedSuccessfully = true,
+                detectedBaseTitle = "Mera Pyar Tera Sahara",
+                detectedVersionLabel = "v01",
+                detectedLanguage = "Schema / JSON",
+                lineCount = 20,
+                wordCount = 50,
+                characterCount = 300,
+                snippetText = "{\"theme\": \"Devotion\", \"emotionalProfile\": \"Bittersweet\"}",
+                parseErrorMessage = null
+            )
+        )
+
+        // 3. Companion Audio (.wav) -> NOT_MEASURED until physical acoustic decoding
+        sampleRecords.add(
+            DiscoveredArtifactRecord(
+                id = "ART-003",
+                documentUri = "content://saf/tree/doc/03",
+                fileName = "mera_pyar_tera_sahara_v1_guide.wav",
+                relativePath = "Mera Pyar Tera Sahara/mera_pyar_tera_sahara_v1_guide.wav",
+                fileExtension = "wav",
+                fileSizeBytes = 25000000L,
+                lastModified = 1700000000L,
+                mimeType = "audio/wav",
+                sha256Hash = "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+                category = ArtifactCategory.AUDIO_STREAM,
+                discoveryState = IngestionDiscoveryState.NOT_MEASURED,
+                isParsedSuccessfully = true,
+                detectedBaseTitle = "Mera Pyar Tera Sahara",
+                detectedVersionLabel = "v01",
+                detectedLanguage = "Audio Stream",
+                lineCount = 0,
+                wordCount = 0,
+                characterCount = 0,
+                snippetText = "Binary Audio Stream [wav, 23.8 MB]",
+                parseErrorMessage = null
+            )
+        )
+
+        // 4. Orphan artifact without companion
+        sampleRecords.add(
+            DiscoveredArtifactRecord(
+                id = "ART-004",
+                documentUri = "content://saf/tree/doc/04",
+                fileName = "stray_guitar_riff_take_09.wav",
+                relativePath = "Unsorted/stray_guitar_riff_take_09.wav",
+                fileExtension = "wav",
+                fileSizeBytes = 12000000L,
+                lastModified = 1700000000L,
+                mimeType = "audio/wav",
+                sha256Hash = "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+                category = ArtifactCategory.AUDIO_STREAM,
+                discoveryState = IngestionDiscoveryState.NOT_MEASURED,
+                isParsedSuccessfully = true,
+                detectedBaseTitle = "Unsorted",
+                detectedVersionLabel = "take09",
+                detectedLanguage = "Audio Stream",
+                lineCount = 0,
+                wordCount = 0,
+                characterCount = 0,
+                snippetText = "Binary Audio Stream [wav, 11.4 MB]",
+                parseErrorMessage = null
+            )
+        )
+
+        // Verify that discovery states are strictly categorized without gate evaluations
+        assertEquals(IngestionDiscoveryState.PARSED, sampleRecords[0].discoveryState)
+        assertEquals(IngestionDiscoveryState.PARSED, sampleRecords[1].discoveryState)
+        assertEquals(IngestionDiscoveryState.NOT_MEASURED, sampleRecords[2].discoveryState)
+        assertEquals(IngestionDiscoveryState.NOT_MEASURED, sampleRecords[3].discoveryState)
+    }
+
+    @Test
+    fun test13_CorpusPersistence_SurvivesRestartWithIntegrity() {
+        val appContext = org.robolectric.RuntimeEnvironment.getApplication()
+
+        val sampleReport = CorpusInventoryReport(
+            scanTimestamp = System.currentTimeMillis(),
+            sourceRootUri = "content://com.android.externalstorage.documents/tree/primary%3AMusic%2FCorpus",
+            sourceRootDisplayName = "Elyzareth Master Corpus (~390 Songs)",
+            scanStatus = IngestionScanStatus.COMPLETED,
+            scanStatusMessage = "Discovery Dry Run complete. Discovered 720 artifacts across 390 base titles.",
+            totalFilesDiscovered = 720,
+            baseTitlesDiscovered = 390,
+            versionsDiscovered = 512,
+            successfullyParsed = 718,
+            unparsedCount = 2,
+            duplicateCandidatesCount = 4,
+            orphanArtifactsCount = 8,
+            missingExpectedComponentsCount = 24,
+            languageStats = mapOf("Hindi (Romanized)" to 210, "Hindi (Devanagari)" to 95, "English / Latin" to 85),
+            evidenceStats = mapOf("Text Witness Available" to 390, "Audio Acoustic (NOT MEASURED)" to 330),
+            baseTitleGroups = listOf(
+                DiscoveredBaseTitleGroup(
+                    baseId = "BASE-001",
+                    title = "Mera Pyar Tera Sahara",
+                    relativeFolder = "Mera Pyar Tera Sahara",
+                    artifacts = emptyList(),
+                    lyricCount = 1,
+                    audioCount = 1,
+                    schemaCount = 1,
+                    primaryLanguage = "Hindi (Romanized)",
+                    isCompletePackage = true,
+                    missingComponents = emptyList(),
+                    duplicateCandidates = emptyList(),
+                    requiresHumanReview = false,
+                    humanReviewReason = null
+                )
+            ),
+            allArtifacts = emptyList()
+        )
+
+        // Save to disk
+        com.example.engine.CorpusPersistenceManager.saveReport(appContext, sampleReport)
+
+        // Restore from disk
+        val restored = com.example.engine.CorpusPersistenceManager.loadSavedReport(appContext)
+
+        assertNotNull("Persisted inventory must be restored from disk", restored)
+        assertEquals(390, restored!!.baseTitlesDiscovered)
+        assertEquals(720, restored.totalFilesDiscovered)
+        assertEquals(512, restored.versionsDiscovered)
+        assertEquals(718, restored.successfullyParsed)
+        assertEquals(2, restored.unparsedCount)
+        assertEquals(4, restored.duplicateCandidatesCount)
+        assertEquals(8, restored.orphanArtifactsCount)
+        assertEquals(24, restored.missingExpectedComponentsCount)
+        assertEquals("Elyzareth Master Corpus (~390 Songs)", restored.sourceRootDisplayName)
+        assertEquals("Hindi (Romanized)", restored.baseTitleGroups.first().primaryLanguage)
+    }
 }

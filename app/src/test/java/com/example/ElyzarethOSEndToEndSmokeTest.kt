@@ -236,4 +236,60 @@ class ElyzarethOSEndToEndSmokeTest {
         viewModel.selectArchiveFile(firstFile)
         assertEquals(firstFile.id, viewModel.selectedArchiveFile.value?.id)
     }
+
+    @Test
+    fun test08_app02_persistenceAndColdRestartIntegrity() {
+        // 1. Initial Cold Launch Verification
+        assertTrue("App 02 must be in canonical AppId registry", AppId.values().contains(AppId.CORPUS_CURATOR))
+        assertTrue("App 02 window must be initialized on launch", viewModel.windows.value.containsKey(AppId.CORPUS_CURATOR))
+        assertEquals("App 02 must be foreground active on launch", AppId.CORPUS_CURATOR, viewModel.activeAppId.value)
+        assertFalse("App 02 must not be closed on launch", viewModel.windows.value[AppId.CORPUS_CURATOR]!!.isClosed)
+
+        // 2. Cold Restart 1: Simulate complete process termination & fresh restart
+        val coldRestartVm1 = ElyzarethOSViewModel()
+        assertTrue("Cold Restart 1: App 02 must be in registry", AppId.values().contains(AppId.CORPUS_CURATOR))
+        assertTrue("Cold Restart 1: App 02 must be initialized in windows", coldRestartVm1.windows.value.containsKey(AppId.CORPUS_CURATOR))
+        assertEquals("Cold Restart 1: App 02 must be active foreground", AppId.CORPUS_CURATOR, coldRestartVm1.activeAppId.value)
+        assertFalse("Cold Restart 1: App 02 window must not be closed", coldRestartVm1.windows.value[AppId.CORPUS_CURATOR]!!.isClosed)
+
+        // 3. Cold Restart 2: Simulate second process termination & fresh restart
+        val coldRestartVm2 = ElyzarethOSViewModel()
+        assertTrue("Cold Restart 2: App 02 must be in registry", AppId.values().contains(AppId.CORPUS_CURATOR))
+        assertTrue("Cold Restart 2: App 02 must be initialized in windows", coldRestartVm2.windows.value.containsKey(AppId.CORPUS_CURATOR))
+        assertEquals("Cold Restart 2: App 02 must be active foreground", AppId.CORPUS_CURATOR, coldRestartVm2.activeAppId.value)
+        assertFalse("Cold Restart 2: App 02 window must not be closed", coldRestartVm2.windows.value[AppId.CORPUS_CURATOR]!!.isClosed)
+
+        // 4. Soft Reboot Verification
+        coldRestartVm2.restartOS()
+        assertTrue("Reboot: App 02 window must be restored in windows map", coldRestartVm2.windows.value.containsKey(AppId.CORPUS_CURATOR))
+        assertEquals("Reboot: App 02 must be restored as active tenant", AppId.CORPUS_CURATOR, coldRestartVm2.activeAppId.value)
+    }
+
+    @Test
+    fun test09_androidApplicationLauncherLayerDiscovery() {
+        val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
+        val packageManager = context.packageManager
+        val packageName = context.packageName
+
+        // 1. Verify Android Package Identification
+        assertNotNull("Package name must be resolved", packageName)
+        assertEquals("com.aistudio.elyzarethos.v9xk", packageName)
+
+        // 2. Query Android Launcher Intents (How Android OS discovers home screen apps)
+        val launcherIntent = android.content.Intent(android.content.Intent.ACTION_MAIN).apply {
+            addCategory(android.content.Intent.CATEGORY_LAUNCHER)
+            setPackage(packageName)
+        }
+
+        val resolveInfos = packageManager.queryIntentActivities(launcherIntent, 0)
+        assertFalse("Android OS launcher query must find at least one launchable activity for Elyzareth OS", resolveInfos.isEmpty())
+
+        val mainActivityInfo = resolveInfos.first()
+        assertEquals("Launchable activity class name must be com.example.MainActivity", "com.example.MainActivity", mainActivityInfo.activityInfo.name)
+        assertTrue("MainActivity must be exported to be launchable by Android OS Launcher", mainActivityInfo.activityInfo.exported)
+
+        // 3. Verify App Label & Icon Resources for Android Launcher Drawer
+        val appLabel = packageManager.getApplicationLabel(context.applicationInfo).toString()
+        assertEquals("Android Launcher app label must match Elyzareth OS", "Elyzareth OS", appLabel)
+    }
 }

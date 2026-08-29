@@ -1,5 +1,9 @@
 package com.example.ui.tenants
 
+import android.content.Context
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -25,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -57,6 +62,7 @@ fun CorpusCuratorApp(
     sittingRoomTab: String,
     selectedGateDiagnostic: GateDiagnostic?,
     corpusSearch: String = "",
+    corpusInventoryReport: CorpusInventoryReport = CorpusInventoryReport(),
     isIngressDialogOpen: Boolean = false,
     ingressDialogType: String = "LYRIC",
     ingressTitle: String = "",
@@ -80,8 +86,30 @@ fun CorpusCuratorApp(
     onIngressAudioIncludedChange: (Boolean) -> Unit = {},
     onIngressAudioDecoderPassChange: (Boolean) -> Unit = {},
     onCommitIngress: () -> Unit = {},
-    onCommitHumanGovernorDisposition: (GovernanceDispositionChoice, String) -> Unit = { _, _ -> }
+    onCommitHumanGovernorDisposition: (GovernanceDispositionChoice, String) -> Unit = { _, _ -> },
+    onIngestSafFolder: (Context, Uri) -> Unit = { _, _ -> },
+    onIngestSafDocument: (Context, Uri) -> Unit = { _, _ -> },
+    onStartSafScan: (Context, Uri) -> Unit = { _, _ -> }
 ) {
+    val context = LocalContext.current
+
+    // Android SAF System Picker Launchers
+    val safFolderLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            onStartSafScan(context, uri)
+            onIngestSafFolder(context, uri)
+        }
+    }
+
+    val safDocumentLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            onIngestSafDocument(context, uri)
+        }
+    }
     val filteredBases = remember(baseCompositions, corpusSearch) {
         if (corpusSearch.isBlank()) baseCompositions
         else baseCompositions.filter {
@@ -98,13 +126,14 @@ fun CorpusCuratorApp(
 
     // Normalize curatorial view tab
     val currentTab = when (sittingRoomTab.uppercase()) {
-        "ALL" -> "ALL"
+        "DRY RUN", "DRY RUN (~390)", "DRY_RUN", "INVENTORY" -> "DRY RUN (~390)"
+        "ALL" -> "DRY RUN (~390)"
         "LYRIC", "WITNESS" -> "WITNESS"
         "AUDIO", "EXAMINATION" -> "EXAMINATION"
         "EVIDENCE", "FINDINGS" -> "FINDINGS"
         "DISPOSITION" -> "DISPOSITION"
         "HISTORY", "AUDIT", "AUDIT & TECHNICAL" -> "AUDIT & TECHNICAL"
-        else -> "ALL"
+        else -> "DRY RUN (~390)"
     }
 
     var isExplorerVisible by remember { mutableStateOf(true) }
@@ -211,6 +240,7 @@ fun CorpusCuratorApp(
                     selectedVersion = selectedVersion,
                     baseCompositions = baseCompositions,
                     currentTab = currentTab,
+                    corpusInventoryReport = corpusInventoryReport,
                     selectedGateDiagnostic = selectedGateDiagnostic,
                     isTechnicalAuditExpanded = isTechnicalAuditExpanded,
                     onSelectTab = onSelectTab,
@@ -222,7 +252,8 @@ fun CorpusCuratorApp(
                     onPreserve = onPreserve,
                     onAccept = onAccept,
                     onSendToEngine = onSendToEngine,
-                    onCommitHumanGovernorDisposition = onCommitHumanGovernorDisposition
+                    onCommitHumanGovernorDisposition = onCommitHumanGovernorDisposition,
+                    onStartSafScan = onStartSafScan
                 )
             } else {
                 // ==========================================
@@ -283,6 +314,28 @@ fun CorpusCuratorApp(
 
                             Spacer(modifier = Modifier.height(4.dp))
 
+                            // Dry Run Quick Launcher
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(if (currentTab == "DRY RUN (~390)") ElyPurple else ElyHeaderGlass)
+                                    .border(0.5.dp, ElyPurple.copy(alpha = 0.6f), RoundedCornerShape(4.dp))
+                                    .clickable { onSelectTab("DRY RUN (~390)") }
+                                    .padding(vertical = 5.dp, horizontal = 4.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "⚡ DRY RUN (~390)",
+                                    fontSize = 8.5.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (currentTab == "DRY RUN (~390)") Color.White else ElyPurple
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(4.dp))
+
                             // Ingress Buttons
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -291,6 +344,7 @@ fun CorpusCuratorApp(
                                 IngressButton("+ CORP", { onOpenIngressDialog("CORPUS") }, Modifier.weight(1f))
                                 IngressButton("+ LYR", { onOpenIngressDialog("LYRIC") }, Modifier.weight(1f))
                                 IngressButton("+ AUD", { onOpenIngressDialog("AUDIO") }, Modifier.weight(1f))
+                                IngressButton("📁 SAF", { safFolderLauncher.launch(null) }, Modifier.weight(1f))
                             }
 
                             Spacer(modifier = Modifier.height(6.dp))
@@ -457,9 +511,9 @@ fun CorpusCuratorApp(
                                     .padding(3.dp),
                                 horizontalArrangement = Arrangement.spacedBy(3.dp)
                             ) {
-                                val tabs = listOf("WITNESS", "EXAMINATION", "FINDINGS", "DISPOSITION", "AUDIT & TECHNICAL")
+                                val tabs = listOf("DRY RUN (~390)", "WITNESS", "EXAMINATION", "FINDINGS", "DISPOSITION", "AUDIT & TECHNICAL")
                                 tabs.forEach { tab ->
-                                    val isTabSelected = (currentTab == tab) || (currentTab == "ALL" && tab == "WITNESS")
+                                    val isTabSelected = (currentTab == tab)
                                     Box(
                                         modifier = Modifier
                                             .weight(1f)
@@ -493,7 +547,11 @@ fun CorpusCuratorApp(
                                     .border(0.5.dp, ElyWindowBorderInactive, RoundedCornerShape(6.dp))
                                     .padding(8.dp)
                             ) {
-                                when (if (currentTab == "ALL") "WITNESS" else currentTab) {
+                                when (currentTab) {
+                                    "DRY RUN (~390)", "DRY RUN" -> CorpusDiscoveryReportView(
+                                        report = corpusInventoryReport,
+                                        onStartSafScan = onStartSafScan
+                                    )
                                     "WITNESS" -> DesktopWitnessView(selectedVersion)
                                     "EXAMINATION" -> ExaminationSectionView(selectedVersion)
                                     "FINDINGS" -> FindingsSectionView(selectedVersion)
@@ -509,6 +567,7 @@ fun CorpusCuratorApp(
                                         selectedGateDiagnostic = selectedGateDiagnostic,
                                         onSelectGate = onSelectGate
                                     )
+                                    else -> DesktopWitnessView(selectedVersion)
                                 }
                             }
                         }
@@ -799,6 +858,44 @@ fun CorpusCuratorApp(
                         }
                     }
 
+                    if (ingressSourceOrigin == IngressSourceOrigin.LOCAL_FOLDER) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(ElyPurple.copy(alpha = 0.15f))
+                                .border(0.5.dp, ElyPurple.copy(alpha = 0.6f), RoundedCornerShape(4.dp))
+                                .padding(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("ANDROID SAF SYSTEM PICKER", fontSize = 9.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, color = ElyPurple)
+                                Text("Select local folder tree or artifact directly via Android SAF", fontSize = 8.sp, color = ElyTextSecondary)
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Button(
+                                    onClick = { safFolderLauncher.launch(null) },
+                                    colors = ButtonDefaults.buttonColors(containerColor = ElyPurple),
+                                    shape = RoundedCornerShape(4.dp),
+                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                                    modifier = Modifier.height(28.dp)
+                                ) {
+                                    Text("📂 Folder", fontSize = 8.sp, fontFamily = FontFamily.Monospace, color = Color.White)
+                                }
+                                Button(
+                                    onClick = { safDocumentLauncher.launch(arrayOf("*/*")) },
+                                    colors = ButtonDefaults.buttonColors(containerColor = ElyHeaderGlass),
+                                    shape = RoundedCornerShape(4.dp),
+                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                                    modifier = Modifier.height(28.dp)
+                                ) {
+                                    Text("📄 File", fontSize = 8.sp, fontFamily = FontFamily.Monospace, color = ElyTextPrimary)
+                                }
+                            }
+                        }
+                    }
+
                     // Raw Lyric Specimen
                     Text("Canonical Text Lyric (Immutable Specimen):", fontSize = 9.5.sp, color = ElyTextSecondary)
                     OutlinedTextField(
@@ -891,6 +988,7 @@ private fun MobileCuratorialWorkspace(
     selectedVersion: SpecimenVersion?,
     baseCompositions: List<BaseComposition>,
     currentTab: String,
+    corpusInventoryReport: CorpusInventoryReport = CorpusInventoryReport(),
     selectedGateDiagnostic: GateDiagnostic?,
     isTechnicalAuditExpanded: Boolean,
     onSelectTab: (String) -> Unit,
@@ -902,8 +1000,60 @@ private fun MobileCuratorialWorkspace(
     onPreserve: () -> Unit,
     onAccept: () -> Unit,
     onSendToEngine: () -> Unit,
-    onCommitHumanGovernorDisposition: (GovernanceDispositionChoice, String) -> Unit
+    onCommitHumanGovernorDisposition: (GovernanceDispositionChoice, String) -> Unit,
+    onStartSafScan: (Context, Uri) -> Unit = { _, _ -> }
 ) {
+    if (currentTab == "DRY RUN" || currentTab == "DRY RUN (~390)") {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 8.dp, vertical = 6.dp)
+        ) {
+            // Curatorial Navigation Filter Chips
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(ElyHeaderGlass)
+                    .padding(2.dp),
+                horizontalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                val sections = listOf("DRY RUN", "ALL", "WITNESS", "EXAMINATION", "FINDINGS", "DISPOSITION")
+                sections.forEach { sec ->
+                    val isSelected = currentTab.startsWith(sec)
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(if (isSelected) ElyTileActive else Color.Transparent)
+                            .clickable { onSelectTab(sec) }
+                            .padding(vertical = 4.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = sec,
+                            fontSize = 8.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            fontFamily = FontFamily.Monospace,
+                            color = if (isSelected) ElyPurple else ElyTextSecondary,
+                            maxLines = 1
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                CorpusDiscoveryReportView(
+                    report = corpusInventoryReport,
+                    onStartSafScan = onStartSafScan
+                )
+            }
+        }
+        return
+    }
+
     if (selectedBase == null || selectedVersion == null) {
         Box(
             modifier = Modifier.fillMaxSize(),
@@ -984,7 +1134,7 @@ private fun MobileCuratorialWorkspace(
                 .padding(2.dp),
             horizontalArrangement = Arrangement.spacedBy(2.dp)
         ) {
-            val sections = listOf("ALL", "WITNESS", "EXAMINATION", "FINDINGS", "DISPOSITION")
+            val sections = listOf("DRY RUN", "ALL", "WITNESS", "EXAMINATION", "FINDINGS", "DISPOSITION")
             sections.forEach { sec ->
                 val isSelected = currentTab == sec
                 Box(

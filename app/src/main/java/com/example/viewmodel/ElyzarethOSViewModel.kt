@@ -1,15 +1,23 @@
 package com.example.viewmodel
 
+import android.content.Context
+import android.net.Uri
+import android.provider.DocumentsContract
+import android.provider.OpenableColumns
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.engine.CorpusDiscoveryEngine
+import com.example.engine.CorpusPersistenceManager
 import com.example.engine.ElyzarethGovernanceEngine
 import com.example.engine.TenantLifecycleManager
 import com.example.model.*
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -171,6 +179,10 @@ class ElyzarethOSViewModel : ViewModel() {
     private val _corpusSearch = MutableStateFlow("")
     val corpusSearch: StateFlow<String> = _corpusSearch.asStateFlow()
 
+    // Real Corpus Ingestion Dry Run Report State
+    private val _corpusInventoryReport = MutableStateFlow<CorpusInventoryReport>(CorpusInventoryReport())
+    val corpusInventoryReport: StateFlow<CorpusInventoryReport> = _corpusInventoryReport.asStateFlow()
+
     // Structured Cure Request (App 02/ELDS-C → Elyzareth OS → App 01)
     private val _activeCureRequest = MutableStateFlow<StructuredCureRequest?>(null)
     val activeCureRequest: StateFlow<StructuredCureRequest?> = _activeCureRequest.asStateFlow()
@@ -216,14 +228,41 @@ class ElyzarethOSViewModel : ViewModel() {
     val systemToast: StateFlow<String?> = _systemToast.asStateFlow()
 
     init {
-        // Initialize windows: open App 03 (The Integrator) and App 01 (Lyric Studio) by default
+        _windows.value = initializeCanonicalWindows()
+        _activeAppId.value = AppId.CORPUS_CURATOR
+
+        // Pre-generate a default song
+        _activeSong.value = ElyzarethGovernanceEngine.generateLyricSuite("Axiom of Night", "Cyber-Opera", "AABB", "")
+
+        // Start background engine heartbeat
+        startEngineHeartbeat()
+    }
+
+    private fun initializeCanonicalWindows(): Map<AppId, WindowData> {
         val initialMap = mutableMapOf<AppId, WindowData>()
-        
-        // App 03: The Integrator (Front and Center)
-        val metrics03 = tenantManager.allocateAndLaunch(AppId.INTEGRATOR)
+
+        // App 02: Corpus Curator / Sitting Room (Foreground Workspace)
+        val metrics02 = tenantManager.allocateAndLaunch(AppId.CORPUS_CURATOR)
+        initialMap[AppId.CORPUS_CURATOR] = WindowData(
+            appId = AppId.CORPUS_CURATOR,
+            isMinimized = false,
+            isMaximized = false,
+            isClosed = false,
+            offsetX = 8f,
+            offsetY = 16f,
+            width = 410f,
+            height = 560f,
+            zIndex = ++zIndexCounter,
+            lifecycleState = TenantLifecycleState.ACTIVE_FOREGROUND,
+            allocatedMemoryMb = metrics02.allocatedMemoryMb
+        )
+
+        // App 03: The Integrator (Background ready)
+        val metrics03 = tenantManager.allocateAndLaunch(AppId.INTEGRATOR, AppId.CORPUS_CURATOR)
+        tenantManager.setMinimized(AppId.INTEGRATOR)
         initialMap[AppId.INTEGRATOR] = WindowData(
             appId = AppId.INTEGRATOR,
-            isMinimized = false,
+            isMinimized = true,
             isMaximized = false,
             isClosed = false,
             offsetX = 12f,
@@ -231,12 +270,12 @@ class ElyzarethOSViewModel : ViewModel() {
             width = 370f,
             height = 540f,
             zIndex = ++zIndexCounter,
-            lifecycleState = TenantLifecycleState.ACTIVE_FOREGROUND,
+            lifecycleState = TenantLifecycleState.MINIMIZED,
             allocatedMemoryMb = metrics03.allocatedMemoryMb
         )
 
         // App 01: Lyric Studio (Minimized in background)
-        val metrics01 = tenantManager.allocateAndLaunch(AppId.LYRIC_GENERATOR, AppId.INTEGRATOR)
+        val metrics01 = tenantManager.allocateAndLaunch(AppId.LYRIC_GENERATOR, AppId.CORPUS_CURATOR)
         tenantManager.setMinimized(AppId.LYRIC_GENERATOR)
         initialMap[AppId.LYRIC_GENERATOR] = WindowData(
             appId = AppId.LYRIC_GENERATOR,
@@ -252,14 +291,7 @@ class ElyzarethOSViewModel : ViewModel() {
             allocatedMemoryMb = metrics01.allocatedMemoryMb * 0.75f
         )
 
-        _windows.value = initialMap
-        _activeAppId.value = AppId.INTEGRATOR
-
-        // Pre-generate a default song
-        _activeSong.value = ElyzarethGovernanceEngine.generateLyricSuite("Axiom of Night", "Cyber-Opera", "AABB", "")
-
-        // Start background engine heartbeat
-        startEngineHeartbeat()
+        return initialMap
     }
 
     private fun startEngineHeartbeat() {
@@ -1200,6 +1232,157 @@ class ElyzarethOSViewModel : ViewModel() {
         showToast("🔒 Ingress Complete: ${evaluatedVersion.specimenId} [${evaluatedVersion.decision}]")
     }
 
+    /**
+     * Executes the READ-ONLY CORPUS INGESTION DRY RUN using Android SAF Document Tree URI.
+     * Recursively discovers all available artifacts, computes deterministic SHA-256 hashes,
+     * groups by base title deterministically, detects language, and persists the inventory.
+     * ZERO destructive writes, ZERO gate evaluations, ZERO automatic curation.
+     */
+    fun scanCorpusDirectoryDryRun(context: Context, folderUri: Uri) {
+        viewModelScope.launch {
+            _corpusInventoryReport.value = _corpusInventoryReport.value.copy(
+                scanStatus = IngestionScanStatus.SCANNING,
+                scanStatusMessage = "Performing read-only recursive discovery over corpus directory..."
+            )
+            showToast("🔍 Discovering corpus artifacts (Read-Only Dry Run)...")
+
+            val report = withContext(Dispatchers.IO) {
+                var displayName = "Selected Corpus Directory"
+                try {
+                    val docId = DocumentsContract.getTreeDocumentId(folderUri)
+                    val treeDocUri = DocumentsContract.buildDocumentUriUsingTree(folderUri, docId)
+                    context.contentResolver.query(treeDocUri, arrayOf(DocumentsContract.Document.COLUMN_DISPLAY_NAME), null, null, null)?.use { cursor ->
+                        if (cursor.moveToFirst()) {
+                            val col = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+                            if (col >= 0) {
+                                displayName = cursor.getString(col) ?: displayName
+                            }
+                        }
+                    }
+                } catch (_: Exception) {}
+
+                val generatedReport = CorpusDiscoveryEngine.performDiscoveryDryRun(
+                    context = context,
+                    rootTreeUri = folderUri,
+                    rootDisplayName = displayName
+                )
+                CorpusPersistenceManager.saveReport(context, generatedReport)
+                generatedReport
+            }
+
+            _corpusInventoryReport.value = report
+            addAuditLog(
+                layer = "SITTING_ROOM",
+                message = "CORPUS_DRY_RUN: Discovered ${report.totalFilesDiscovered} files across ${report.baseTitlesDiscovered} base titles (${report.versionsDiscovered} versions) from '${report.sourceRootDisplayName}'. Evidence only. Protocol 3.2.1.0 paused.",
+                hashStamp = "ELY-CORPUS-DRYRUN"
+            )
+            showToast("✅ Discovery Dry Run Complete: ${report.baseTitlesDiscovered} Base Titles / ${report.totalFilesDiscovered} Artifacts")
+        }
+    }
+
+    /**
+     * Restores previously persisted corpus inventory from local app storage.
+     */
+    fun loadPersistedCorpusReport(context: Context) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val loaded = CorpusPersistenceManager.loadSavedReport(context)
+            if (loaded != null && loaded.totalFilesDiscovered > 0) {
+                _corpusInventoryReport.value = loaded
+                addAuditLog(
+                    layer = "SITTING_ROOM",
+                    message = "PERSISTENCE_RESTORE: Restored inventory (${loaded.baseTitlesDiscovered} base titles, ${loaded.totalFilesDiscovered} artifacts) from disk cache.",
+                    hashStamp = "ELY-STORE-RESTORE"
+                )
+            }
+        }
+    }
+
+    /**
+     * Ingresses a local folder specimen package using the Android Storage Access Framework (SAF) Tree URI.
+     * Also triggers the non-destructive discovery dry-run scan.
+     */
+    fun ingestFromSafFolderUri(context: Context, folderUri: Uri) {
+        // Trigger non-destructive corpus dry run discovery
+        scanCorpusDirectoryDryRun(context, folderUri)
+    }
+
+    /**
+     * Ingresses a single artifact document (text, json, audio) using Android Storage Access Framework (SAF).
+     */
+    fun ingestFromSafDocumentUri(context: Context, docUri: Uri) {
+        viewModelScope.launch {
+            try {
+                var displayName = "SAF Document Specimen"
+                context.contentResolver.query(docUri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                        if (nameIndex >= 0) {
+                            displayName = cursor.getString(nameIndex) ?: displayName
+                        }
+                    }
+                }
+
+                val bytes = context.contentResolver.openInputStream(docUri)?.use { it.readBytes() } ?: ByteArray(0)
+                val lowerName = displayName.lowercase(Locale.US)
+                val title = displayName.substringBeforeLast(".")
+
+                val isJson = lowerName.endsWith(".json")
+                val isAudio = lowerName.endsWith(".wav") || lowerName.endsWith(".pcm") || lowerName.endsWith(".mp3")
+                val isLyric = !isJson && !isAudio
+
+                val lyricBytes = if (isLyric) bytes else null
+                val jsonBytes = if (isJson) bytes else null
+                val audioBytes = if (isAudio) bytes else null
+
+                val rawLyric = if (lyricBytes != null) String(lyricBytes, Charsets.UTF_8) else """
+                    [Verse 1]
+                    Across the wooden table sits the silver coin,
+                    Beside the misty railway where the rivers join.
+                """.trimIndent()
+
+                val pkg = SpecimenArtifactPackage(
+                    packageId = "PKG-SAF-DOC-${UUID.randomUUID().toString().take(6).uppercase(Locale.US)}",
+                    title = title.ifBlank { "SAF Specimen" },
+                    sourceOrigin = IngressSourceOrigin.LOCAL_FOLDER,
+                    declaredLocationOrPath = docUri.toString(),
+                    lyricTextBytes = lyricBytes ?: rawLyric.toByteArray(Charsets.UTF_8),
+                    rawLyricString = rawLyric,
+                    jsonWitnessBytes = jsonBytes,
+                    audioBinaryBytes = audioBytes,
+                    audioFormatDeclared = if (audioBytes != null) "audio/pcm" else null
+                )
+
+                val reconciled = ElyzarethGovernanceEngine.reconcilePhysicalArtifactPackage(pkg)
+                val evaluatedVersion = ElyzarethGovernanceEngine.evaluateReconciledPackage(reconciled)
+
+                val baseId = "BASE-SAF-${(10..99).random()}"
+                val newBase = BaseComposition(
+                    id = baseId,
+                    title = pkg.title,
+                    era = "Ingressed Specimen (SAF Document)",
+                    authorOrSource = "Android SAF Document Picker",
+                    versions = listOf(evaluatedVersion),
+                    selectedVersionId = evaluatedVersion.versionId
+                )
+
+                _baseCompositions.value = listOf(newBase) + _baseCompositions.value
+                _selectedBaseCompositionId.value = baseId
+                _selectedVersionId.value = evaluatedVersion.versionId
+                _selectedGateDiagnostic.value = null
+                _isIngressDialogOpen.value = false
+
+                addAuditLog(
+                    layer = "SITTING_ROOM",
+                    message = "SAF_DOC_INGRESS: '$displayName' ingressed from local storage via SAF (${evaluatedVersion.specimenId}). Decision: ${evaluatedVersion.decision}",
+                    hashStamp = evaluatedVersion.sha256Hash
+                )
+                showToast("🔒 SAF Document Ingress: ${evaluatedVersion.specimenId} [${evaluatedVersion.decision}]")
+            } catch (e: Exception) {
+                showToast("⚠️ SAF Document Ingress Error: ${e.message}")
+            }
+        }
+    }
+
     fun selectCorpus(item: CorpusItem) {
         _selectedCorpus.value = item
     }
@@ -1528,17 +1711,14 @@ class ElyzarethOSViewModel : ViewModel() {
     }
 
     fun restartOS() {
-        _windows.value = emptyMap()
         _isStartMenuOpen.value = false
         _isQuickSettingsOpen.value = false
         _masterIntegratedBundle.value = null
         _pipelineProgress.value = 0f
         _pipelineStatus.value = PipelineRunStatus.IDLE
         _auditLogs.value = ElyzarethGovernanceEngine.getInitialAuditLogs()
+        _windows.value = initializeCanonicalWindows()
+        _activeAppId.value = AppId.CORPUS_CURATOR
         showToast("Elyzareth OS Kernel Soft Rebooted")
-        viewModelScope.launch {
-            delay(400)
-            openApp(AppId.INTEGRATOR)
-        }
     }
 }

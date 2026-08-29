@@ -17,6 +17,7 @@ import com.example.viewmodel.ElyzarethOSViewModel
 
 class MainActivity : ComponentActivity() {
 
+    // Elyzareth OS Root Entry Point
     private val osViewModel: ElyzarethOSViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {

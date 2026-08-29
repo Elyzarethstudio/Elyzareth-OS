@@ -1,6 +1,7 @@
 package com.example.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.*
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -8,6 +9,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -21,6 +23,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -37,11 +44,11 @@ import java.util.*
 /**
  * ELYZARETH OS — SYSTEM TASKBAR
  *
- * Shell Rule Refinement:
- * 1. Taskbar is system/navigation, NOT an app catalogue.
- * 2. Permanent items: [Start] [Search] ... [System/Status Tray]
- * 3. Open applications appear dynamically ONLY when running/active.
- * 4. No G1-G5 exposure as general OS decoration.
+ * Sits anchored at the bottom of the UniversalWindowShell / Desktop workspace:
+ * 1. Start Button Placeholder (Triggers Start Menu / App Launcher)
+ * 2. Search Button (Quick search across OS and tenants)
+ * 3. Active Windows Tray Area (Displays running/minimized window tabs with focus indicators)
+ * 4. System Status / Telemetry Tray (Clock, date, RAM allocation, and OS readiness indicator)
  */
 @Composable
 fun Taskbar(
@@ -95,6 +102,7 @@ fun Taskbar(
         modifier = modifier
             .fillMaxWidth()
             .height(56.dp)
+            .testTag("taskbar")
             .shadow(elevation = 16.dp)
             .background(ElyTaskbarGlass)
             .border(
@@ -107,59 +115,70 @@ fun Taskbar(
                 ),
                 shape = RoundedCornerShape(topStart = 0.dp, topEnd = 0.dp)
             )
-            .padding(horizontal = 12.dp),
+            .padding(horizontal = 8.dp),
         contentAlignment = Alignment.Center
     ) {
-        // Center Group: [Start] [Search] + [Dynamic Running App Indicators]
+        // Center Group: [Start] [Search] + [Active Windows Tray Area]
         Row(
-            modifier = Modifier.wrapContentWidth(),
+            modifier = Modifier
+                .wrapContentWidth()
+                .testTag("taskbar_center_container"),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            // 1. Start Button (Authoritative Launcher Trigger)
+            // 1. Start Button Placeholder (Authoritative Launcher Trigger)
             StartButton(
                 isOpen = isStartMenuOpen,
                 onClick = onToggleStartMenu
             )
 
-            // 2. Search Button (Quick Retrieval for Apps, Lyrics, Corpus, Spaces)
+            // 2. Search Button Placeholder (Quick Retrieval for Apps, Lyrics, Corpus, Spaces)
             SearchButton(
                 isOpen = isStartMenuOpen,
                 onClick = onToggleStartMenu
             )
 
-            // 3. Dynamic Running Applications (Only open windows appear here)
-            if (runningWindows.isNotEmpty()) {
-                VerticalDivider(
-                    modifier = Modifier
-                        .height(22.dp)
-                        .padding(horizontal = 2.dp),
-                    color = Color.White.copy(alpha = 0.15f)
-                )
-
-                runningWindows.forEach { win ->
-                    val appId = win.appId
-                    val metrics = tenantMetrics[appId]
-                    val isFocused = activeAppId == appId && !win.isMinimized
-
-                    RunningTaskbarWindowTab(
-                        appId = appId,
-                        windowData = win,
-                        metrics = metrics,
-                        isFocused = isFocused,
-                        isMinimized = win.isMinimized,
-                        onClick = { onAppIconClick(appId) },
-                        onTerminate = { onAppTerminate(appId) }
+            // 3. Dynamic Active Windows Tray Area (Open windows appear dynamically here)
+            Row(
+                modifier = Modifier
+                    .wrapContentWidth()
+                    .testTag("active_windows_tray"),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                if (runningWindows.isNotEmpty()) {
+                    VerticalDivider(
+                        modifier = Modifier
+                            .height(24.dp)
+                            .padding(horizontal = 2.dp),
+                        color = Color.White.copy(alpha = 0.15f)
                     )
+
+                    runningWindows.forEach { win ->
+                        val appId = win.appId
+                        val metrics = tenantMetrics[appId]
+                        val isFocused = activeAppId == appId && !win.isMinimized
+
+                        RunningTaskbarWindowTab(
+                            appId = appId,
+                            windowData = win,
+                            metrics = metrics,
+                            isFocused = isFocused,
+                            isMinimized = win.isMinimized,
+                            onClick = { onAppIconClick(appId) },
+                            onTerminate = { onAppTerminate(appId) }
+                        )
+                    }
                 }
             }
         }
 
-        // Right-Side System / Status Area
+        // Right-Side System / Status Tray Area
         Row(
             modifier = Modifier
                 .align(Alignment.CenterEnd)
-                .wrapContentWidth(),
+                .wrapContentWidth()
+                .testTag("system_status_tray"),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
@@ -167,10 +186,15 @@ fun Taskbar(
             if (totalAllocatedMemory > 0f) {
                 Box(
                     modifier = Modifier
+                        .height(36.dp)
                         .clip(RoundedCornerShape(6.dp))
                         .background(Color.Black.copy(alpha = 0.4f))
-                        .clickable { onToggleQuickSettings() }
-                        .padding(horizontal = 6.dp, vertical = 4.dp),
+                        .clickable(
+                            role = Role.Button,
+                            onClickLabel = "View Memory Allocation",
+                            onClick = onToggleQuickSettings
+                        )
+                        .padding(horizontal = 8.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
@@ -182,13 +206,18 @@ fun Taskbar(
                 }
             }
 
-            // System Readiness State Indicator (Clean, non-decorative)
+            // System Readiness State Indicator
             Box(
                 modifier = Modifier
+                    .height(36.dp)
                     .clip(RoundedCornerShape(6.dp))
                     .background(Color(0xFF1E293B).copy(alpha = 0.6f))
-                    .clickable { onToggleQuickSettings() }
-                    .padding(horizontal = 7.dp, vertical = 4.dp),
+                    .clickable(
+                        role = Role.Button,
+                        onClickLabel = "View System Telemetry",
+                        onClick = onToggleQuickSettings
+                    )
+                    .padding(horizontal = 8.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Row(
@@ -214,10 +243,15 @@ fun Taskbar(
             // System Clock & Date (Triggers Quick Settings Flyout)
             Box(
                 modifier = Modifier
+                    .height(44.dp)
                     .clip(RoundedCornerShape(8.dp))
                     .background(if (isQuickSettingsOpen) ElyTileActive else Color.Transparent)
-                    .clickable { onToggleQuickSettings() }
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                    .clickable(
+                        role = Role.Button,
+                        onClickLabel = "Open Quick Settings and Calendar",
+                        onClick = onToggleQuickSettings
+                    )
+                    .padding(horizontal = 8.dp),
                 contentAlignment = Alignment.CenterEnd
             ) {
                 Column(
@@ -231,7 +265,7 @@ fun Taskbar(
                         color = ElyTextPrimary
                     )
                     Text(
-                        text = currentDate.ifEmpty { "08/22" },
+                        text = currentDate.ifEmpty { "08/28" },
                         fontSize = 9.sp,
                         color = ElyTextTertiary
                     )
@@ -246,33 +280,40 @@ private fun StartButton(
     isOpen: Boolean,
     onClick: () -> Unit
 ) {
+    val animatedBg by animateColorAsState(
+        targetValue = if (isOpen) ElyCyan.copy(alpha = 0.25f) else Color(0xFF1E293B).copy(alpha = 0.7f),
+        label = "start_bg"
+    )
+
     Box(
         modifier = Modifier
-            .size(40.dp)
+            .size(44.dp)
+            .testTag("start_button")
             .clip(RoundedCornerShape(8.dp))
-            .background(
-                if (isOpen) ElyCyan.copy(alpha = 0.25f)
-                else Color(0xFF1E293B).copy(alpha = 0.7f)
-            )
+            .background(animatedBg)
             .border(
                 width = 1.dp,
                 color = if (isOpen) ElyCyan else Color.White.copy(alpha = 0.12f),
                 shape = RoundedCornerShape(8.dp)
             )
-            .clickable(onClick = onClick),
+            .clickable(
+                role = Role.Button,
+                onClickLabel = "Start Menu",
+                onClick = onClick
+            ),
         contentAlignment = Alignment.Center
     ) {
         Column(
-            verticalArrangement = Arrangement.spacedBy(2.dp),
+            verticalArrangement = Arrangement.spacedBy(2.5.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                Box(modifier = Modifier.size(6.dp).background(ElyCyan, RoundedCornerShape(1.5.dp)))
-                Box(modifier = Modifier.size(6.dp).background(ElyViolet, RoundedCornerShape(1.5.dp)))
+            Row(horizontalArrangement = Arrangement.spacedBy(2.5.dp)) {
+                Box(modifier = Modifier.size(6.5.dp).background(ElyCyan, RoundedCornerShape(1.5.dp)))
+                Box(modifier = Modifier.size(6.5.dp).background(ElyViolet, RoundedCornerShape(1.5.dp)))
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                Box(modifier = Modifier.size(6.dp).background(ElyPurple, RoundedCornerShape(1.5.dp)))
-                Box(modifier = Modifier.size(6.dp).background(ElyG3Axiom, RoundedCornerShape(1.5.dp)))
+            Row(horizontalArrangement = Arrangement.spacedBy(2.5.dp)) {
+                Box(modifier = Modifier.size(6.5.dp).background(ElyPurple, RoundedCornerShape(1.5.dp)))
+                Box(modifier = Modifier.size(6.5.dp).background(ElyG3Axiom, RoundedCornerShape(1.5.dp)))
             }
         }
     }
@@ -285,7 +326,8 @@ private fun SearchButton(
 ) {
     Box(
         modifier = Modifier
-            .height(40.dp)
+            .height(44.dp)
+            .testTag("search_button")
             .clip(RoundedCornerShape(8.dp))
             .background(if (isOpen) ElyTileActive else Color.Black.copy(alpha = 0.35f))
             .border(
@@ -293,7 +335,11 @@ private fun SearchButton(
                 color = if (isOpen) ElyCyan else Color.White.copy(alpha = 0.12f),
                 shape = RoundedCornerShape(8.dp)
             )
-            .clickable(onClick = onClick)
+            .clickable(
+                role = Role.Button,
+                onClickLabel = "Search OS",
+                onClick = onClick
+            )
             .padding(horizontal = 10.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -337,7 +383,8 @@ private fun RunningTaskbarWindowTab(
 
     Box(
         modifier = Modifier
-            .height(40.dp)
+            .height(44.dp)
+            .testTag("taskbar_tab_${appId.name}")
             .clip(RoundedCornerShape(8.dp))
             .background(backgroundColor)
             .border(
@@ -347,7 +394,9 @@ private fun RunningTaskbarWindowTab(
             )
             .combinedClickable(
                 onClick = onClick,
-                onLongClick = { showContextMenu = true }
+                onLongClick = { showContextMenu = true },
+                role = Role.Tab,
+                onClickLabel = "${appId.title} Window Tab"
             )
             .padding(horizontal = 8.dp),
         contentAlignment = Alignment.Center
@@ -443,3 +492,4 @@ private fun RunningTaskbarWindowTab(
         }
     }
 }
+

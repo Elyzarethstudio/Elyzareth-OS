@@ -24,6 +24,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -38,6 +39,7 @@ fun DesktopEnvironment(
     viewModel: ElyzarethOSViewModel,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     val windows by viewModel.windows.collectAsState()
     val activeAppId by viewModel.activeAppId.collectAsState()
     val isStartMenuOpen by viewModel.isStartMenuOpen.collectAsState()
@@ -90,6 +92,7 @@ fun DesktopEnvironment(
     val corpusList by viewModel.corpusList.collectAsState()
     val selectedCorpus by viewModel.selectedCorpus.collectAsState()
     val corpusSearch by viewModel.corpusSearch.collectAsState()
+    val corpusInventoryReport by viewModel.corpusInventoryReport.collectAsState()
 
     // Integrator State
     val pipelineNodes by viewModel.pipelineNodes.collectAsState()
@@ -107,6 +110,11 @@ fun DesktopEnvironment(
     val archiveFiles by viewModel.archiveFiles.collectAsState()
     val selectedArchiveFile by viewModel.selectedArchiveFile.collectAsState()
     val archiveCategoryFilter by viewModel.archiveCategoryFilter.collectAsState()
+
+    // Load persisted dry run report on initial launch
+    LaunchedEffect(Unit) {
+        viewModel.loadPersistedCorpusReport(context)
+    }
 
     // Auto-clear toast
     LaunchedEffect(systemToast) {
@@ -253,6 +261,7 @@ fun DesktopEnvironment(
                             sittingRoomTab = sittingRoomTab,
                             selectedGateDiagnostic = selectedGateDiagnostic,
                             corpusSearch = corpusSearch,
+                            corpusInventoryReport = corpusInventoryReport,
                             isIngressDialogOpen = isIngressDialogOpen,
                             ingressDialogType = ingressDialogType,
                             ingressTitle = ingressTitle,
@@ -276,7 +285,10 @@ fun DesktopEnvironment(
                             onIngressAudioIncludedChange = viewModel::setIngressAudioIncluded,
                             onIngressAudioDecoderPassChange = viewModel::setIngressAudioDecoderPass,
                             onCommitIngress = viewModel::commitSpecimenIngress,
-                            onCommitHumanGovernorDisposition = viewModel::commitHumanGovernorDisposition
+                            onCommitHumanGovernorDisposition = viewModel::commitHumanGovernorDisposition,
+                            onIngestSafFolder = viewModel::ingestFromSafFolderUri,
+                            onIngestSafDocument = viewModel::ingestFromSafDocumentUri,
+                            onStartSafScan = viewModel::scanCorpusDirectoryDryRun
                         )
                     }
                     AppId.INTEGRATOR -> {
