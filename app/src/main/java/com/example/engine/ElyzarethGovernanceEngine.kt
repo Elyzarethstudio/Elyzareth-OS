@@ -2197,5 +2197,47 @@ object ElyzarethGovernanceEngine {
             audioFormatDeclared = if (revisedAudioBytes != null) "audio/pcm" else null
         )
     }
+
+    /**
+     * V38.2 PRODUCTION VALIDATION SUITE ADAPTERS
+     */
+    fun evaluateSpecimenCompliance(
+        specimen: com.example.model.IntegratedSongSpecimen,
+        requiredRules: List<String>
+    ): com.example.model.GovernanceComplianceVerdict {
+        val violations = mutableListOf<String>()
+        if (specimen.audioHash.isBlank()) {
+            violations.add("G3_FORENSIC_WITNESS::AUDIO_MISSING")
+        }
+        if (specimen.lyricHash.isBlank()) {
+            violations.add("G1_RHYME_INTEGRITY::LYRIC_MISSING")
+        }
+        if (!specimen.isReconciled) {
+            violations.add("G4_PROVENANCE_TRACE::UNRECONCILED_BUNDLE")
+        }
+
+        val isApproved = violations.isEmpty()
+        val status = if (isApproved) "APPROVED" else "REJECTED"
+        val receiptId = "RCPT-" + UUID.randomUUID().toString().take(8).uppercase(Locale.US)
+
+        return com.example.model.GovernanceComplianceVerdict(
+            receiptId = receiptId,
+            isApproved = isApproved,
+            status = status,
+            hasFatalViolations = !isApproved,
+            violations = violations
+        )
+    }
+
+    fun verifyCryptographicHashMatch(expectedHash: String, actualHash: String): com.example.model.HashVerificationReceipt {
+        val isMatch = expectedHash.equals(actualHash, ignoreCase = true)
+        val status = if (isMatch) "HASH_MATCH_VERIFIED" else "HASH_MISMATCH_TAMPER_DETECTED"
+        return com.example.model.HashVerificationReceipt(
+            isMatch = isMatch,
+            status = status,
+            expectedHash = expectedHash,
+            actualHash = actualHash
+        )
+    }
 }
 

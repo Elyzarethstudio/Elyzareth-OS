@@ -37,6 +37,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.PopupProperties
 import com.example.model.*
 import com.example.ui.theme.*
 
@@ -156,6 +157,12 @@ fun LyricGeneratorApp(
                         DropdownMenu(
                             expanded = showModeDropdown,
                             onDismissRequest = { showModeDropdown = false },
+                            properties = PopupProperties(
+                                focusable = true,
+                                dismissOnBackPress = true,
+                                dismissOnClickOutside = true,
+                                clippingEnabled = false
+                            ),
                             modifier = Modifier.background(Color(0xFF221A1A))
                         ) {
                             DropdownMenuItem(

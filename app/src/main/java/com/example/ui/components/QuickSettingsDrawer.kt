@@ -110,9 +110,9 @@ fun QuickSettingsDrawer(
                     )
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        listOf("Obsidian Aurora", "Cyber Matrix", "Deep Mica").forEach { wp ->
+                        listOf("Alpine Dawn", "Obsidian Aurora", "Cyber Matrix", "Deep Mica").forEach { wp ->
                             val isSelected = currentWallpaper == wp
                             Box(
                                 modifier = Modifier
@@ -125,12 +125,12 @@ fun QuickSettingsDrawer(
                                         shape = RoundedCornerShape(6.dp)
                                     )
                                     .clickable { onSelectWallpaper(wp) }
-                                    .padding(vertical = 8.dp),
+                                    .padding(vertical = 6.dp),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
-                                    text = wp.split(" ").first(),
-                                    fontSize = 10.sp,
+                                    text = if (wp == "Alpine Dawn") "Alpine" else wp.split(" ").first(),
+                                    fontSize = 9.sp,
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                                     color = if (isSelected) ElyCyan else ElyTextSecondary
                                 )

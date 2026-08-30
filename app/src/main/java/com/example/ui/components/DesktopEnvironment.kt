@@ -23,10 +23,14 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.*
@@ -142,202 +146,6 @@ fun DesktopEnvironment(
     ) {
         // Dynamic Desktop Wallpaper Canvas
         DesktopWallpaperCanvas(wallpaper = wallpaper)
-
-        // Elyzareth OS Desktop Workspace Canvas (Visible when windows are minimized/open)
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 72.dp),
-            verticalArrangement = Arrangement.SpaceBetween
-        ) {
-            // Top OS Bar & Center Branding
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                // OS Status Pill
-                Row(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(ElyHeaderGlass)
-                        .border(0.5.dp, ElyCyan.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
-                        .padding(horizontal = 12.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(ElyG3Axiom))
-                    Text(
-                        text = "ELYZARETH OS V3.2.1 • FORENSIC WORKSPACE • G3 ACTIVE",
-                        fontSize = 8.5.sp,
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold,
-                        color = ElyCyan
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                Text(
-                    text = "ELYZARETH OS",
-                    fontSize = 26.sp,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = Color.White.copy(alpha = 0.88f),
-                    letterSpacing = 6.sp
-                )
-                Text(
-                    text = "ONE SPACE // FIVE TENANTS // FORENSIC WORKSPACE",
-                    fontSize = 9.sp,
-                    fontFamily = FontFamily.Monospace,
-                    color = ElyCyan.copy(alpha = 0.75f),
-                    letterSpacing = 2.sp
-                )
-            }
-
-            // Five Tenant Entry Cards Grid (Center of Desktop Shell)
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    text = "SOVEREIGN TENANTS // ACTIVE DOMAINS",
-                    fontSize = 8.5.sp,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold,
-                    color = ElyTextSecondary,
-                    letterSpacing = 1.sp
-                )
-
-                AppId.values().forEach { appId ->
-                    val isRunning = windows[appId]?.isClosed == false
-                    val isForeground = activeAppId == appId && windows[appId]?.isMinimized == false
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(
-                                if (isForeground) ElyPurple.copy(alpha = 0.22f)
-                                else ElySurfaceCard.copy(alpha = 0.85f)
-                            )
-                            .border(
-                                width = if (isForeground) 1.dp else 0.5.dp,
-                                color = if (isForeground) ElyPurple else ElyWindowBorderInactive,
-                                shape = RoundedCornerShape(8.dp)
-                            )
-                            .clickable { viewModel.openApp(appId) }
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(
-                                    Brush.linearGradient(
-                                        listOf(
-                                            when (appId) {
-                                                AppId.LYRIC_GENERATOR -> ElyCyan
-                                                AppId.CORPUS_CURATOR -> ElyPurple
-                                                AppId.INTEGRATOR -> ElyCyanBright
-                                                AppId.ENGINE_TERMINAL -> ElyG3Axiom
-                                                AppId.SPACE_ARCHIVE -> ElyIndigo
-                                            },
-                                            Color(0xFF0F172A)
-                                        )
-                                    )
-                                )
-                                .border(0.5.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(8.dp)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = appId.defaultIcon,
-                                contentDescription = appId.title,
-                                tint = Color.White,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-
-                        Column(modifier = Modifier.weight(1f)) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Text(
-                                    text = appId.tenantNumber,
-                                    fontSize = 7.5.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                    fontWeight = FontWeight.Bold,
-                                    color = when (appId) {
-                                        AppId.LYRIC_GENERATOR -> ElyCyan
-                                        AppId.CORPUS_CURATOR -> ElyPurple
-                                        AppId.INTEGRATOR -> ElyCyanBright
-                                        AppId.ENGINE_TERMINAL -> ElyG3Axiom
-                                        AppId.SPACE_ARCHIVE -> ElyIndigo
-                                    }
-                                )
-                                Text(
-                                    text = "•",
-                                    fontSize = 7.5.sp,
-                                    color = ElyTextTertiary
-                                )
-                                Text(
-                                    text = appId.title,
-                                    fontSize = 10.5.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                    fontWeight = FontWeight.Bold,
-                                    color = ElyTextPrimary
-                                )
-                            }
-                            Text(
-                                text = appId.subtitle,
-                                fontSize = 8.sp,
-                                color = ElyTextSecondary,
-                                maxLines = 1
-                            )
-                        }
-
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(if (isRunning) ElyG3Axiom.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.05f))
-                                .border(
-                                    0.5.dp,
-                                    if (isRunning) ElyG3Axiom.copy(alpha = 0.6f) else ElyWindowBorderInactive,
-                                    RoundedCornerShape(4.dp)
-                                )
-                                .padding(horizontal = 6.dp, vertical = 3.dp)
-                        ) {
-                            Text(
-                                text = if (isRunning) "LAUNCHED" else "OPEN",
-                                fontSize = 7.5.sp,
-                                fontFamily = FontFamily.Monospace,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isRunning) ElyG3Axiom else ElyTextSecondary
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Bottom Quick Tips
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(Color(0xFF0C1018))
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("Tap any tenant to open in window shell", fontSize = 7.5.sp, color = ElyTextTertiary)
-                Text("Taskbar controls below", fontSize = 7.5.sp, color = ElyCyan.copy(alpha = 0.7f))
-            }
-        }
 
         // Window Shells Area (Landlord Space)
         val sortedWindows = windows.values.toList().sortedBy { it.zIndex }
@@ -590,110 +398,509 @@ fun DesktopEnvironment(
 
 @Composable
 private fun DesktopWallpaperCanvas(wallpaper: String) {
-    Canvas(modifier = Modifier.fillMaxSize()) {
-        val width = size.width
-        val height = size.height
+    if (wallpaper != "Cyber Matrix" && wallpaper != "Deep Mica" && wallpaper != "Obsidian Aurora") {
+        // Alpine Dawn (Elyzareth Official Landscape Wallpaper)
+        Box(modifier = Modifier.fillMaxSize()) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val width = size.width
+                val height = size.height
+                val horizonY = height * 0.58f
 
-        // Dark gradient base
-        drawRect(
-            brush = Brush.radialGradient(
-                colors = when (wallpaper) {
-                    "Cyber Matrix" -> listOf(
-                        Color(0xFF064E3B).copy(alpha = 0.4f),
-                        Color(0xFF0F172A),
-                        Color(0xFF020617)
-                    )
-                    "Deep Mica" -> listOf(
-                        Color(0xFF1E1B4B).copy(alpha = 0.35f),
-                        Color(0xFF0F172A),
-                        Color(0xFF0B0F19)
-                    )
-                    else -> listOf(
-                        Color(0xFF0369A1).copy(alpha = 0.3f),
-                        Color(0xFF311042).copy(alpha = 0.25f),
-                        Color(0xFF090D16)
-                    )
-                },
-                center = Offset(width * 0.5f, height * 0.35f),
-                radius = width * 0.9f
-            )
-        )
+                // 1. Sky Gradient (Luminous Azure Blue to Soft Peach Sunrise at Horizon)
+                drawRect(
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            Color(0xFF2563EB), // Azure deep blue
+                            Color(0xFF38BDF8), // Radiant sky blue
+                            Color(0xFF7DD3FC), // Soft cyan
+                            Color(0xFFBAE6FD), // Pale morning blue
+                            Color(0xFFFED7AA), // Sunrise peach
+                            Color(0xFFFEF08A)  // Golden dawn glow
+                        ),
+                        startY = 0f,
+                        endY = horizonY
+                    ),
+                    topLeft = Offset.Zero,
+                    size = androidx.compose.ui.geometry.Size(width, horizonY)
+                )
 
-        // Subdued futuristic grid
-        val step = 60f
-        var x = 0f
-        while (x < width) {
-            drawLine(
-                color = Color.White.copy(alpha = 0.02f),
-                start = Offset(x, 0f),
-                end = Offset(x, height),
-                strokeWidth = 1f
-            )
-            x += step
-        }
-        var y = 0f
-        while (y < height) {
-            drawLine(
-                color = Color.White.copy(alpha = 0.02f),
-                start = Offset(0f, y),
-                end = Offset(width, y),
-                strokeWidth = 1f
-            )
-            y += step
-        }
-    }
-}
+                // 2. Soft Sunrise Clouds
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(Color.White.copy(alpha = 0.45f), Color.Transparent),
+                        center = Offset(width * 0.22f, horizonY * 0.75f),
+                        radius = width * 0.35f
+                    ),
+                    radius = width * 0.35f,
+                    center = Offset(width * 0.22f, horizonY * 0.75f)
+                )
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(Color(0xFFFED7AA).copy(alpha = 0.5f), Color.Transparent),
+                        center = Offset(width * 0.78f, horizonY * 0.72f),
+                        radius = width * 0.38f
+                    ),
+                    radius = width * 0.38f,
+                    center = Offset(width * 0.78f, horizonY * 0.72f)
+                )
 
-@Composable
-private fun DesktopShortcutIcon(
-    appId: AppId,
-    onClick: () -> Unit
-) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-        modifier = Modifier
-            .width(64.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .clickable(onClick = onClick)
-            .padding(4.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(
-                    Brush.linearGradient(
-                        listOf(
-                            when (appId) {
-                                AppId.LYRIC_GENERATOR -> ElyCyan
-                                AppId.CORPUS_CURATOR -> ElyPurple
-                                AppId.INTEGRATOR -> ElyCyanBright
-                                AppId.ENGINE_TERMINAL -> ElyG3Axiom
-                                AppId.SPACE_ARCHIVE -> ElyIndigo
-                            },
-                            Color(0xFF0F172A)
-                        )
+                // 3. Central Rising Sun Glow & Beams
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            Color.White,
+                            Color(0xFFFEF08A).copy(alpha = 0.95f),
+                            Color(0xFFFDBA74).copy(alpha = 0.6f),
+                            Color(0xFF38BDF8).copy(alpha = 0.15f),
+                            Color.Transparent
+                        ),
+                        center = Offset(width * 0.5f, horizonY),
+                        radius = width * 0.42f
+                    ),
+                    radius = width * 0.42f,
+                    center = Offset(width * 0.5f, horizonY)
+                )
+
+                // 4. Distant Mountain Silhouette & Snow-Capped Alpine Peaks
+                // Far mountain range
+                val farRange = Path().apply {
+                    moveTo(0f, horizonY)
+                    lineTo(0f, horizonY * 0.78f)
+                    lineTo(width * 0.08f, horizonY * 0.66f)
+                    lineTo(width * 0.18f, horizonY * 0.74f)
+                    lineTo(width * 0.28f, horizonY * 0.60f)
+                    lineTo(width * 0.38f, horizonY * 0.70f)
+                    lineTo(width * 0.45f, horizonY * 0.85f)
+                    lineTo(width * 0.55f, horizonY * 0.85f)
+                    lineTo(width * 0.64f, horizonY * 0.68f)
+                    lineTo(width * 0.75f, horizonY * 0.58f)
+                    lineTo(width * 0.85f, horizonY * 0.68f)
+                    lineTo(width * 0.94f, horizonY * 0.62f)
+                    lineTo(width, horizonY * 0.75f)
+                    lineTo(width, horizonY)
+                    close()
+                }
+                drawPath(
+                    path = farRange,
+                    brush = Brush.verticalGradient(
+                        colors = listOf(Color(0xFF475569), Color(0xFF64748B), Color(0xFF94A3B8)),
+                        startY = horizonY * 0.55f,
+                        endY = horizonY
                     )
                 )
-                .border(0.5.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(10.dp)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = appId.defaultIcon,
-                contentDescription = appId.title,
-                tint = Color.White,
-                modifier = Modifier.size(22.dp)
-            )
-        }
 
-        Spacer(modifier = Modifier.height(3.dp))
-        Text(
-            text = appId.shortName,
-            fontSize = 9.sp,
-            fontWeight = FontWeight.Medium,
-            color = ElyTextPrimary,
-            maxLines = 1
-        )
+                // Snow caps on far peaks
+                val snowCaps = Path().apply {
+                    moveTo(width * 0.24f, horizonY * 0.65f)
+                    lineTo(width * 0.28f, horizonY * 0.60f)
+                    lineTo(width * 0.32f, horizonY * 0.65f)
+                    close()
+
+                    moveTo(width * 0.70f, horizonY * 0.64f)
+                    lineTo(width * 0.75f, horizonY * 0.58f)
+                    lineTo(width * 0.80f, horizonY * 0.64f)
+                    close()
+
+                    moveTo(width * 0.05f, horizonY * 0.70f)
+                    lineTo(width * 0.08f, horizonY * 0.66f)
+                    lineTo(width * 0.12f, horizonY * 0.71f)
+                    close()
+                }
+                drawPath(snowCaps, color = Color.White.copy(alpha = 0.92f))
+
+                // Left dramatic alpine mountain flank
+                val leftFlank = Path().apply {
+                    moveTo(0f, horizonY)
+                    lineTo(0f, horizonY * 0.52f)
+                    lineTo(width * 0.14f, horizonY * 0.68f)
+                    lineTo(width * 0.25f, horizonY * 0.82f)
+                    lineTo(width * 0.38f, horizonY)
+                    close()
+                }
+                drawPath(
+                    path = leftFlank,
+                    brush = Brush.verticalGradient(
+                        colors = listOf(Color(0xFF334155), Color(0xFF1E293B), Color(0xFF0F172A)),
+                        startY = horizonY * 0.50f,
+                        endY = horizonY
+                    )
+                )
+                // Left flank snow cover
+                val leftSnow = Path().apply {
+                    moveTo(0f, horizonY * 0.52f)
+                    lineTo(width * 0.06f, horizonY * 0.58f)
+                    lineTo(width * 0.12f, horizonY * 0.69f)
+                    lineTo(width * 0.08f, horizonY * 0.72f)
+                    lineTo(0f, horizonY * 0.65f)
+                    close()
+                }
+                drawPath(leftSnow, color = Color.White.copy(alpha = 0.85f))
+
+                // Right dramatic alpine mountain flank
+                val rightFlank = Path().apply {
+                    moveTo(width, horizonY)
+                    lineTo(width, horizonY * 0.48f)
+                    lineTo(width * 0.88f, horizonY * 0.62f)
+                    lineTo(width * 0.76f, horizonY * 0.78f)
+                    lineTo(width * 0.62f, horizonY)
+                    close()
+                }
+                drawPath(
+                    path = rightFlank,
+                    brush = Brush.verticalGradient(
+                        colors = listOf(Color(0xFF334155), Color(0xFF1E293B), Color(0xFF0F172A)),
+                        startY = horizonY * 0.45f,
+                        endY = horizonY
+                    )
+                )
+                // Right flank snow cover
+                val rightSnow = Path().apply {
+                    moveTo(width, horizonY * 0.48f)
+                    lineTo(width * 0.92f, horizonY * 0.56f)
+                    lineTo(width * 0.85f, horizonY * 0.68f)
+                    lineTo(width * 0.90f, horizonY * 0.72f)
+                    lineTo(width, horizonY * 0.60f)
+                    close()
+                }
+                drawPath(rightSnow, color = Color.White.copy(alpha = 0.85f))
+
+                // 5. Alpine Lake (Reflective Mirror Water from Horizon to Bottom)
+                drawRect(
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            Color(0xFF7DD3FC), // Sky reflection at horizon
+                            Color(0xFF0284C7), // Azure deep lake
+                            Color(0xFF0369A1), // Alpine blue
+                            Color(0xFF0F172A)  // Deep lake base near taskbar
+                        ),
+                        startY = horizonY,
+                        endY = height
+                    ),
+                    topLeft = Offset(0f, horizonY),
+                    size = androidx.compose.ui.geometry.Size(width, height - horizonY)
+                )
+
+                // Golden Sunrise Shimmer Column down the lake center
+                drawOval(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            Color.White.copy(alpha = 0.9f),
+                            Color(0xFFFEF08A).copy(alpha = 0.7f),
+                            Color(0xFFFDBA74).copy(alpha = 0.35f),
+                            Color.Transparent
+                        ),
+                        center = Offset(width * 0.5f, horizonY + (height - horizonY) * 0.35f),
+                        radius = (height - horizonY) * 0.7f
+                    ),
+                    topLeft = Offset(width * 0.35f, horizonY),
+                    size = androidx.compose.ui.geometry.Size(width * 0.30f, height - horizonY)
+                )
+
+                // Water ripple texture lines
+                for (i in 1..8) {
+                    val rippleY = horizonY + (height - horizonY) * (i * 0.11f)
+                    val rippleWidth = width * (0.25f + i * 0.08f)
+                    val rippleStart = (width - rippleWidth) / 2f
+                    drawLine(
+                        color = Color.White.copy(alpha = 0.25f - (i * 0.02f)),
+                        start = Offset(rippleStart, rippleY),
+                        end = Offset(rippleStart + rippleWidth, rippleY),
+                        strokeWidth = 1.2f
+                    )
+                }
+
+                // 6. Foreground Rocky Shorelines & Evergreen Pine Forest Silhouettes
+                // Left Shore & Pines
+                val leftShore = Path().apply {
+                    moveTo(0f, height)
+                    lineTo(0f, horizonY + (height - horizonY) * 0.15f)
+                    lineTo(width * 0.18f, horizonY + (height - horizonY) * 0.35f)
+                    lineTo(width * 0.24f, horizonY + (height - horizonY) * 0.65f)
+                    lineTo(width * 0.12f, height)
+                    close()
+                }
+                drawPath(
+                    path = leftShore,
+                    brush = Brush.linearGradient(
+                        listOf(Color(0xFF0F172A), Color(0xFF1E293B), Color(0xFF064E3B))
+                    )
+                )
+
+                // Left pine trees
+                listOf(
+                    Pair(width * 0.04f, horizonY + (height - horizonY) * 0.12f),
+                    Pair(width * 0.09f, horizonY + (height - horizonY) * 0.20f),
+                    Pair(width * 0.14f, horizonY + (height - horizonY) * 0.28f),
+                    Pair(width * 0.19f, horizonY + (height - horizonY) * 0.42f)
+                ).forEach { (px, py) ->
+                    val treePath = Path().apply {
+                        moveTo(px, py - 32f)
+                        lineTo(px + 12f, py)
+                        lineTo(px - 12f, py)
+                        close()
+
+                        moveTo(px, py - 20f)
+                        lineTo(px + 16f, py + 16f)
+                        lineTo(px - 16f, py + 16f)
+                        close()
+                    }
+                    drawPath(treePath, color = Color(0xFF0F172A))
+                }
+
+                // Right Shore & Pines
+                val rightShore = Path().apply {
+                    moveTo(width, height)
+                    lineTo(width, horizonY + (height - horizonY) * 0.25f)
+                    lineTo(width * 0.82f, horizonY + (height - horizonY) * 0.50f)
+                    lineTo(width * 0.88f, height)
+                    close()
+                }
+                drawPath(
+                    path = rightShore,
+                    brush = Brush.linearGradient(
+                        listOf(Color(0xFF0F172A), Color(0xFF1E293B), Color(0xFF064E3B))
+                    )
+                )
+
+                // Right pine trees
+                listOf(
+                    Pair(width * 0.86f, horizonY + (height - horizonY) * 0.38f),
+                    Pair(width * 0.92f, horizonY + (height - horizonY) * 0.24f),
+                    Pair(width * 0.96f, horizonY + (height - horizonY) * 0.18f)
+                ).forEach { (px, py) ->
+                    val treePath = Path().apply {
+                        moveTo(px, py - 30f)
+                        lineTo(px + 12f, py)
+                        lineTo(px - 12f, py)
+                        close()
+
+                        moveTo(px, py - 18f)
+                        lineTo(px + 15f, py + 14f)
+                        lineTo(px - 15f, py + 14f)
+                        close()
+                    }
+                    drawPath(treePath, color = Color(0xFF0F172A))
+                }
+
+                // 7. Celestial Star Compass Emblem & Glowing Flares in the Upper Sky
+                val emblemCenter = Offset(width * 0.5f, height * 0.165f)
+
+                // Soft background radial aura
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            Color.White.copy(alpha = 0.85f),
+                            Color(0xFF38BDF8).copy(alpha = 0.55f),
+                            Color(0xFF0284C7).copy(alpha = 0.2f),
+                            Color.Transparent
+                        ),
+                        center = emblemCenter,
+                        radius = 110f
+                    ),
+                    radius = 110f,
+                    center = emblemCenter
+                )
+
+                // Outer Celestial Ring
+                drawCircle(
+                    color = Color.White.copy(alpha = 0.88f),
+                    radius = 70f,
+                    center = emblemCenter,
+                    style = Stroke(width = 2.2f)
+                )
+                // Inner Celestial Ring
+                drawCircle(
+                    color = Color(0xFFBAE6FD).copy(alpha = 0.75f),
+                    radius = 52f,
+                    center = emblemCenter,
+                    style = Stroke(width = 1.4f)
+                )
+
+                // North-South Primary Vertical Flare Diamond
+                val verticalRay = Path().apply {
+                    moveTo(emblemCenter.x, emblemCenter.y - 105f) // Top tip
+                    lineTo(emblemCenter.x + 10f, emblemCenter.y)
+                    lineTo(emblemCenter.x, emblemCenter.y + 115f) // Bottom tip
+                    lineTo(emblemCenter.x - 10f, emblemCenter.y)
+                    close()
+                }
+                drawPath(verticalRay, color = Color.White.copy(alpha = 0.95f))
+
+                // East-West Primary Horizontal Flare Diamond
+                val horizontalRay = Path().apply {
+                    moveTo(emblemCenter.x - 90f, emblemCenter.y) // Left tip
+                    lineTo(emblemCenter.x, emblemCenter.y - 8f)
+                    lineTo(emblemCenter.x + 90f, emblemCenter.y) // Right tip
+                    lineTo(emblemCenter.x, emblemCenter.y + 8f)
+                    close()
+                }
+                drawPath(horizontalRay, color = Color.White.copy(alpha = 0.95f))
+
+                // Diagonal Star Diamond Rays
+                val diagRays = Path().apply {
+                    // Top-Left to Bottom-Right
+                    moveTo(emblemCenter.x - 48f, emblemCenter.y - 48f)
+                    lineTo(emblemCenter.x + 5f, emblemCenter.y - 5f)
+                    lineTo(emblemCenter.x + 48f, emblemCenter.y + 48f)
+                    lineTo(emblemCenter.x - 5f, emblemCenter.y + 5f)
+                    close()
+
+                    // Top-Right to Bottom-Left
+                    moveTo(emblemCenter.x + 48f, emblemCenter.y - 48f)
+                    lineTo(emblemCenter.x + 5f, emblemCenter.y + 5f)
+                    lineTo(emblemCenter.x - 48f, emblemCenter.y + 48f)
+                    lineTo(emblemCenter.x - 5f, emblemCenter.y - 5f)
+                    close()
+                }
+                drawPath(diagRays, color = Color(0xFFBAE6FD).copy(alpha = 0.9f))
+
+                // Wing Arcs on Compass Sides
+                val leftArc = Path().apply {
+                    moveTo(emblemCenter.x - 85f, emblemCenter.y)
+                    quadraticBezierTo(
+                        emblemCenter.x - 40f, emblemCenter.y + 35f,
+                        emblemCenter.x, emblemCenter.y + 75f
+                    )
+                }
+                drawPath(leftArc, color = Color.White.copy(alpha = 0.85f), style = Stroke(width = 2f))
+
+                val rightArc = Path().apply {
+                    moveTo(emblemCenter.x + 85f, emblemCenter.y)
+                    quadraticBezierTo(
+                        emblemCenter.x + 40f, emblemCenter.y + 35f,
+                        emblemCenter.x, emblemCenter.y + 75f
+                    )
+                }
+                drawPath(rightArc, color = Color.White.copy(alpha = 0.85f), style = Stroke(width = 2f))
+
+                // Radiant Center Star Core
+                drawCircle(
+                    color = Color.White,
+                    radius = 8f,
+                    center = emblemCenter
+                )
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(Color.White, Color(0xFF38BDF8), Color.Transparent),
+                        center = emblemCenter,
+                        radius = 24f
+                    ),
+                    radius = 24f,
+                    center = emblemCenter
+                )
+            }
+
+            // 8. Wallpaper Typography Overlay (Pure Elyzareth Identity)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.TopCenter)
+                    .padding(top = 188.dp, start = 16.dp, end = 16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                Text(
+                    text = "E L Y Z A R E T H",
+                    fontSize = 28.sp,
+                    fontFamily = FontFamily.Serif,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF0F172A),
+                    letterSpacing = 7.sp,
+                    textAlign = TextAlign.Center
+                )
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .width(36.dp)
+                            .height(1.dp)
+                            .background(Color(0xFF0284C7).copy(alpha = 0.6f))
+                    )
+                    Text(
+                        text = "OS",
+                        fontSize = 20.sp,
+                        fontFamily = FontFamily.Serif,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFF0284C7),
+                        letterSpacing = 3.sp
+                    )
+                    Box(
+                        modifier = Modifier
+                            .width(36.dp)
+                            .height(1.dp)
+                            .background(Color(0xFF0284C7).copy(alpha = 0.6f))
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Text(
+                    text = "CREATE  •  CURATE  •  INTEGRATE  •  GOVERN  •  ARCHIVE",
+                    fontSize = 7.5.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF1E293B).copy(alpha = 0.88f),
+                    letterSpacing = 1.5.sp,
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
+    } else {
+        // Dark / Ambient Wallpapers
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val width = size.width
+            val height = size.height
+
+            // Dark gradient base
+            drawRect(
+                brush = Brush.radialGradient(
+                    colors = when (wallpaper) {
+                        "Cyber Matrix" -> listOf(
+                            Color(0xFF064E3B).copy(alpha = 0.4f),
+                            Color(0xFF0F172A),
+                            Color(0xFF020617)
+                        )
+                        "Deep Mica" -> listOf(
+                            Color(0xFF1E1B4B).copy(alpha = 0.35f),
+                            Color(0xFF0F172A),
+                            Color(0xFF0B0F19)
+                        )
+                        else -> listOf(
+                            Color(0xFF0369A1).copy(alpha = 0.3f),
+                            Color(0xFF311042).copy(alpha = 0.25f),
+                            Color(0xFF090D16)
+                        )
+                    },
+                    center = Offset(width * 0.5f, height * 0.35f),
+                    radius = width * 0.9f
+                )
+            )
+
+            // Subdued futuristic grid
+            val step = 60f
+            var x = 0f
+            while (x < width) {
+                drawLine(
+                    color = Color.White.copy(alpha = 0.02f),
+                    start = Offset(x, 0f),
+                    end = Offset(x, height),
+                    strokeWidth = 1f
+                )
+                x += step
+            }
+            var y = 0f
+            while (y < height) {
+                drawLine(
+                    color = Color.White.copy(alpha = 0.02f),
+                    start = Offset(0f, y),
+                    end = Offset(width, y),
+                    strokeWidth = 1f
+                )
+                y += step
+            }
+        }
     }
 }

@@ -123,7 +123,7 @@ fun StartMenu(
                             .height(48.dp)
                     )
 
-                    // Navigation Tabs: Pinned Tenants vs One Space Utilities
+                    // Navigation Tabs: Creative Apps vs Space Utilities
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -132,7 +132,7 @@ fun StartMenu(
                             .padding(2.dp)
                     ) {
                         TabPill(
-                            title = "Tenant Apps",
+                            title = "Creative Apps",
                             isSelected = selectedTab == 0,
                             modifier = Modifier.weight(1f),
                             onClick = { selectedTab = 0 }
@@ -153,14 +153,13 @@ fun StartMenu(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "AVAILABLE TENANTS",
+                                text = "PINNED APPLICATIONS",
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Monospace,
                                 color = ElyTextSecondary
                             )
                             Text(
-                                text = "One Space Environment",
+                                text = "Elyzareth Studio",
                                 fontSize = 9.sp,
                                 color = ElyCyan
                             )

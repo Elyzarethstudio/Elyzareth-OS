@@ -48,3 +48,71 @@ data class ArchiveFile(
 ) {
     val fullContent: String get() = fullText
 }
+
+// =============================================================================
+// ELYZARETH OS v38.2 — PRODUCTION VALIDATION DATA CONTRACTS
+// =============================================================================
+
+data class WitnessObservation(
+    val specimenId: String,
+    val witnessName: String,
+    val audioHash: String,
+    val dynamicRangeDb: Float,
+    val perceivedWarmthScore: Float,
+    val notes: String
+)
+
+data class IntegratedSongSpecimen(
+    val specimenId: String,
+    val title: String,
+    val lyricHash: String,
+    val audioHash: String,
+    val dnaProfile: Any?,
+    val witnessRecord: WitnessObservation?,
+    val isReconciled: Boolean
+)
+
+data class GovernanceComplianceVerdict(
+    val receiptId: String,
+    val isApproved: Boolean,
+    val status: String,
+    val hasFatalViolations: Boolean,
+    val violations: List<String> = emptyList()
+)
+
+data class ArchiveManifest(
+    val archiveId: String,
+    val specimenId: String,
+    val governanceReceipt: String,
+    val masterHash: String,
+    val timestampUtc: String,
+    val isSealed: Boolean
+)
+
+data class AudioExtractionTelemetry(
+    val isSuccess: Boolean,
+    val sampleRate: Int,
+    val errorCode: String? = null,
+    val errorMessage: String? = null
+)
+
+data class HashVerificationReceipt(
+    val isMatch: Boolean,
+    val status: String,
+    val expectedHash: String,
+    val actualHash: String
+)
+
+data class WorkspaceTransaction(
+    val transactionId: String,
+    val step: String,
+    val specimenId: String,
+    val isCommitted: Boolean,
+    val isRolledBack: Boolean = false,
+    val rollbackReason: String? = null
+)
+
+data class DeserializedForensicState(
+    val specimenId: String,
+    val metrics: Map<String, String>
+)

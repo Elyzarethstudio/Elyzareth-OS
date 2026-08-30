@@ -78,7 +78,7 @@ class ElyzarethOSViewModel : ViewModel() {
     private val _isQuickSettingsOpen = MutableStateFlow(false)
     val isQuickSettingsOpen: StateFlow<Boolean> = _isQuickSettingsOpen.asStateFlow()
 
-    private val _desktopWallpaper = MutableStateFlow("Obsidian Aurora")
+    private val _desktopWallpaper = MutableStateFlow("Alpine Dawn")
     val desktopWallpaper: StateFlow<String> = _desktopWallpaper.asStateFlow()
 
     private val _searchQuery = MutableStateFlow("")

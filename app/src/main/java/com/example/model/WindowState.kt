@@ -18,36 +18,36 @@ enum class AppId(
     val defaultHeight: Float = 520f
 ) {
     LYRIC_GENERATOR(
-        title = "App 01 — Lyric Generator",
-        shortName = "Lyric Generator",
-        subtitle = "Neural Rhyme & Meter Synthesizer",
+        title = "Lyric Studio",
+        shortName = "Lyric Studio",
+        subtitle = "Songwriting & Meter Generator",
         tenantNumber = "TENANT 01",
         defaultIcon = Icons.Filled.AutoAwesome,
         defaultWidth = 360f,
         defaultHeight = 520f
     ),
     CORPUS_CURATOR(
-        title = "App 02 — Corpus Curator / Sitting Room",
+        title = "Sitting Room",
         shortName = "Sitting Room",
-        subtitle = "Forensic Examination Workspace & Triage",
+        subtitle = "Lyric Curator & Review Studio",
         tenantNumber = "TENANT 02",
         defaultIcon = Icons.Filled.MenuBook,
         defaultWidth = 400f,
         defaultHeight = 540f
     ),
     INTEGRATOR(
-        title = "App 03 — Integrator",
+        title = "Axiom Integrator",
         shortName = "Integrator",
-        subtitle = "Cross-Tenant Pipeline & Multimodal Bridge",
+        subtitle = "Cross-Song Pipeline & Studio Bridge",
         tenantNumber = "TENANT 03",
         defaultIcon = Icons.Filled.Cable,
         defaultWidth = 370f,
         defaultHeight = 530f
     ),
     ENGINE_TERMINAL(
-        title = "App 04 — Governance Matrix",
-        shortName = "Governance Matrix",
-        subtitle = "Forensic Telemetry & Axiomatic Verifier",
+        title = "Governance Matrix",
+        shortName = "Governance",
+        subtitle = "Quality Standards & Rule Verifier",
         tenantNumber = "TENANT 04",
         defaultIcon = Icons.Filled.Terminal,
         defaultWidth = 360f,
@@ -55,8 +55,8 @@ enum class AppId(
     ),
     SPACE_ARCHIVE(
         title = "Space Archive",
-        shortName = "Space Archive",
-        subtitle = "Forensic Storage & Artifacts Hub",
+        shortName = "Archive",
+        subtitle = "Song Library & Sound Vault",
         tenantNumber = "TENANT 05",
         defaultIcon = Icons.Filled.FolderSpecial,
         defaultWidth = 360f,
