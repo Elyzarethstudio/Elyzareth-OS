@@ -1,11 +1,13 @@
 package com.example.viewmodel
 
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.engine.ArchivePersistenceManager
 import com.example.engine.CorpusDiscoveryEngine
 import com.example.engine.CorpusPersistenceManager
 import com.example.engine.ElyzarethGovernanceEngine
@@ -26,6 +28,33 @@ class ElyzarethOSViewModel : ViewModel() {
 
     private val timeFormat = SimpleDateFormat("HH:mm:ss", Locale.US)
     private var zIndexCounter = 10f
+    private var applicationContextRef: Context? = null
+
+    fun initializePersistentState(context: Context) {
+        applicationContextRef = context.applicationContext
+        viewModelScope.launch {
+            // 1. Restore Archive Artifacts from Disk
+            val loadedArchive = ArchivePersistenceManager.loadSavedArchiveFiles(context)
+            if (loadedArchive != null && loadedArchive.isNotEmpty()) {
+                _archiveFiles.value = loadedArchive
+                _selectedArchiveFile.value = loadedArchive.firstOrNull()
+                addAuditLog("ARCHIVE_STORE", "Restored ${loadedArchive.size} artifacts from persistent archive storage.", "ELY-ARCH-RESTORE")
+            }
+
+            // 2. Restore Corpus Discovery Report from Disk
+            val loadedCorpus = CorpusPersistenceManager.loadSavedReport(context)
+            if (loadedCorpus != null) {
+                _corpusInventoryReport.value = loadedCorpus
+                addAuditLog("CORPUS_STORE", "Restored corpus inventory (${loadedCorpus.baseTitlesDiscovered} base titles) from disk cache.", "ELY-CORPUS-RESTORE")
+            }
+        }
+    }
+
+    private fun persistCurrentArchiveFiles() {
+        applicationContextRef?.let { ctx ->
+            ArchivePersistenceManager.saveArchiveFiles(ctx, _archiveFiles.value)
+        }
+    }
 
     // Tenant Lifecycle & Resource Manager
     val tenantManager = TenantLifecycleManager(
@@ -720,13 +749,17 @@ class ElyzarethOSViewModel : ViewModel() {
                     vocalTimbre = _attachedVoice.value?.timbre ?: _vocalTimbre.value,
                     audioProfile = _audioCadenceProfile.value
                 )
-                _activeSong.value = cureOutput.generatedSong
-                _existingLyric.value = cureOutput.generatedSong.rawLyricText
+                val songWithLineage = cureOutput.generatedSong.copy(
+                    sourceSpecimenId = _activeCureRequest.value?.sourceSpecimenId,
+                    originalLyricSha256 = _activeCureRequest.value?.originalLyricText?.let { ElyzarethGovernanceEngine.generateHash(it) }
+                )
+                _activeSong.value = songWithLineage
+                _existingLyric.value = songWithLineage.rawLyricText
                 _activeCreativeDna.value = cureOutput.creativeDna
                 _turboValidationReport.value = cureOutput.validationReport
                 _turboEngineMode.value = TurboEngineMode.CURE
                 _isGeneratingLyric.value = false
-                addAuditLog("TURBO_CURE", "Turbo Engine surgical cure applied for '${cureOutput.generatedSong.title}' [Anchors: ${cureOutput.validationReport.physicalAnchorCount}]", cureOutput.engineSeal)
+                addAuditLog("TURBO_CURE", "Turbo Engine surgical cure applied for '${songWithLineage.title}' [Anchors: ${cureOutput.validationReport.physicalAnchorCount}] (Lineage: ${songWithLineage.sourceSpecimenId})", cureOutput.engineSeal)
                 showToast("✨ Turbo Engine CURE Applied (Physical Anchors Preserved)")
             } else {
                 // Governed Turbo GENERATE / TRANSFORMATION mode
@@ -1075,6 +1108,10 @@ class ElyzarethOSViewModel : ViewModel() {
                 appendLine("TITLE: ${song.title}")
                 appendLine("GENRE: ${song.genreTheme} | CADENCE: ${song.cadence} | RHYME: ${song.rhymeScheme}")
                 appendLine("G3 AXIOMATIC SEAL: ${song.g3SealHash}")
+                if (song.sourceSpecimenId != null) {
+                    appendLine("SOURCE SPECIMEN ID: ${song.sourceSpecimenId}")
+                    appendLine("ORIGINAL LYRIC SHA-256: ${song.originalLyricSha256 ?: "N/A"}")
+                }
                 appendLine("---")
                 song.stanzas.forEach { stanza ->
                     appendLine("[${stanza.type}]")
@@ -1086,7 +1123,8 @@ class ElyzarethOSViewModel : ViewModel() {
             sizeKb = 3.8f
         )
         _archiveFiles.value = listOf(newFile) + _archiveFiles.value
-        showToast("Saved to Space Archive Hub")
+        persistCurrentArchiveFiles()
+        showToast("Saved to Space Archive Hub (Persisted)")
     }
 
     fun sendSongToIntegrator() {
@@ -1718,6 +1756,10 @@ class ElyzarethOSViewModel : ViewModel() {
             _pipelineNodes.value = nodes.toList()
             _pipelineProgress.value = 1.0f
 
+            val currentSong = _activeSong.value
+            val srcSpecimenId = currentSong?.sourceSpecimenId ?: _activeCureRequest.value?.sourceSpecimenId
+            val origLyricHash = currentSong?.originalLyricSha256 ?: _activeCureRequest.value?.originalLyricText?.let { ElyzarethGovernanceEngine.generateHash(it) }
+
             val masterBundle = MasterIntegratedBundle(
                 id = "INT-BND-${UUID.randomUUID().toString().take(6)}",
                 name = "Master Suite // ${selectedCorpTitle} + ${lyricName}",
@@ -1727,7 +1769,7 @@ class ElyzarethOSViewModel : ViewModel() {
                 g1Rating = "99.8% Cadence Concordance",
                 g2Coherence = "0.98 Resonant Balance",
                 g3Hash = seal,
-                synthesizedSummary = "Harmonized fusion of ancient corpus motifs with modern multi-stanza lyric architecture, validated through G1 syntactic, G2 harmonic, and G3 axiomatic verification layers.",
+                synthesizedSummary = "Harmonized fusion of ancient corpus motifs with modern multi-stanza lyric architecture, validated through G1 syntactic, G2 harmonic, and G3 axiomatic verification layers.${if (srcSpecimenId != null) " [Lineage: $srcSpecimenId]" else ""}",
                 fullMasterText = buildString {
                     appendLine("==================================================")
                     appendLine("       ELYZARETH OS // MASTER INTEGRATION SUITE   ")
@@ -1735,6 +1777,10 @@ class ElyzarethOSViewModel : ViewModel() {
                     appendLine("ORCHESTRATION TENANT: App 03 — The Integrator")
                     appendLine("CORPUS TENANT: App 02 — $selectedCorpTitle")
                     appendLine("LYRIC TENANT: App 01 — $lyricName")
+                    if (srcSpecimenId != null) {
+                        appendLine("SOURCE SPECIMEN ID: $srcSpecimenId")
+                        appendLine("ORIGINAL LYRIC SHA-256: ${origLyricHash ?: "N/A"}")
+                    }
                     appendLine("G1 SYNTACTIC RATING: 99.8%")
                     appendLine("G2 HARMONIC COHERENCE: 0.98")
                     appendLine("G3 AXIOMATIC SEAL: $seal")
@@ -1759,7 +1805,7 @@ class ElyzarethOSViewModel : ViewModel() {
             appendPipelineLog("[SUCCESS] Master Integration Artifact generated with G3 Seal $seal.")
             showToast("Pipeline Completed Successfully!")
 
-            // Add to archive files
+            // Add to archive files and persist to local disk
             val archiveFile = ArchiveFile(
                 id = "ARC-${UUID.randomUUID().toString().take(6)}",
                 fileName = "master_suite_${masterBundle.id.lowercase()}.intg",
@@ -1771,6 +1817,7 @@ class ElyzarethOSViewModel : ViewModel() {
                 sizeKb = 18.2f
             )
             _archiveFiles.value = listOf(archiveFile) + _archiveFiles.value
+            persistCurrentArchiveFiles()
         }
     }
 
@@ -1838,6 +1885,7 @@ class ElyzarethOSViewModel : ViewModel() {
         if (_selectedArchiveFile.value?.id == fileId) {
             _selectedArchiveFile.value = _archiveFiles.value.firstOrNull()
         }
+        persistCurrentArchiveFiles()
         addAuditLog("SURVIVOR_VAULT", "Archived lyric '${target?.fileName ?: fileId}' permanently deleted by Curator.", "ELY-ARCH-DEL")
         showToast("🗑️ Deleted from Archive: ${target?.fileName ?: "Lyric"}")
     }

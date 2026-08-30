@@ -1,5 +1,10 @@
 package com.example.ui.tenants
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
+import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -14,6 +19,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -23,7 +29,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -90,6 +99,8 @@ fun LyricGeneratorApp(
     onSaveToArchive: () -> Unit,
     onSendToIntegrator: () -> Unit
 ) {
+    val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
     var showAudioModal by remember { mutableStateOf(false) }
     var showVoiceModal by remember { mutableStateOf(false) }
     var showModeDropdown by remember { mutableStateOf(false) }
@@ -1549,32 +1560,90 @@ fun LyricGeneratorApp(
                     StanzaCard(stanza = stanza)
                 }
 
-                // Cross-Tenant Actions
+                // Cross-Tenant Actions & Physical Android I/O
                 item {
-                    Row(
+                    Column(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Button(
-                            onClick = onSendToIntegrator,
-                            modifier = Modifier.weight(1f).height(40.dp),
-                            shape = RoundedCornerShape(8.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = ElyViolet)
-                        ) {
-                            Icon(Icons.Default.Cable, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Send to Integrator", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                        val fullSongText = buildString {
+                            appendLine("=== ${activeSong.title} ===")
+                            appendLine("Cadence: ${activeSong.cadence} | Rhyme: ${activeSong.rhymeScheme}")
+                            appendLine("G3 Axiom Seal: ${activeSong.g3SealHash}")
+                            appendLine()
+                            activeSong.stanzas.forEach { s ->
+                                appendLine("[${s.type}]")
+                                s.lines.forEach { line -> appendLine(line) }
+                                appendLine()
+                            }
                         }
 
-                        OutlinedButton(
-                            onClick = onSaveToArchive,
-                            modifier = Modifier.weight(1f).height(40.dp),
-                            shape = RoundedCornerShape(8.dp),
-                            border = ButtonDefaults.outlinedButtonBorder(enabled = true).copy(brush = Brush.horizontalGradient(listOf(ElyCyan, ElyPurple)))
+                        // Primary I/O Row (Copy to Clipboard + Share to Android / Suno)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(16.dp), tint = ElyCyan)
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Save to Archive", fontSize = 11.sp, color = ElyTextPrimary)
+                            Button(
+                                onClick = {
+                                    clipboardManager.setText(AnnotatedString(fullSongText))
+                                    val sysClipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                                    sysClipboard?.setPrimaryClip(ClipData.newPlainText(activeSong.title, fullSongText))
+                                    Toast.makeText(context, "📋 Full lyric copied to clipboard!", Toast.LENGTH_SHORT).show()
+                                },
+                                modifier = Modifier.weight(1f).height(42.dp).testTag("btn_lyric_copy"),
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = ElyCyan)
+                            ) {
+                                Icon(Icons.Default.ContentCopy, contentDescription = "Copy Lyric", modifier = Modifier.size(16.dp), tint = Color.Black)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Copy Lyric", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+                            }
+
+                            Button(
+                                onClick = {
+                                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                        type = "text/plain"
+                                        putExtra(Intent.EXTRA_SUBJECT, activeSong.title)
+                                        putExtra(Intent.EXTRA_TEXT, fullSongText)
+                                    }
+                                    context.startActivity(Intent.createChooser(shareIntent, "Share Lyric '${activeSong.title}'"))
+                                },
+                                modifier = Modifier.weight(1f).height(42.dp).testTag("btn_lyric_share"),
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = ElyViolet)
+                            ) {
+                                Icon(Icons.Default.Share, contentDescription = "Send External", modifier = Modifier.size(16.dp), tint = Color.White)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Send External", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            }
+                        }
+
+                        // Inter-Tenant Orchestration Row
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = onSendToIntegrator,
+                                modifier = Modifier.weight(1f).height(40.dp).testTag("btn_lyric_send_integrator"),
+                                shape = RoundedCornerShape(8.dp),
+                                border = ButtonDefaults.outlinedButtonBorder(enabled = true).copy(brush = Brush.horizontalGradient(listOf(ElyViolet, ElyCyan)))
+                            ) {
+                                Icon(Icons.Default.Cable, contentDescription = null, modifier = Modifier.size(16.dp), tint = ElyCyan)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Send to Integrator", fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold, color = ElyTextPrimary)
+                            }
+
+                            OutlinedButton(
+                                onClick = onSaveToArchive,
+                                modifier = Modifier.weight(1f).height(40.dp).testTag("btn_lyric_save_archive"),
+                                shape = RoundedCornerShape(8.dp),
+                                border = ButtonDefaults.outlinedButtonBorder(enabled = true).copy(brush = Brush.horizontalGradient(listOf(ElyCyan, ElyPurple)))
+                            ) {
+                                Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(16.dp), tint = ElyPurple)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Save to Archive", fontSize = 10.5.sp, color = ElyTextPrimary)
+                            }
                         }
                     }
                 }
@@ -1861,6 +1930,8 @@ fun LyricGeneratorApp(
 
 @Composable
 fun StanzaCard(stanza: Stanza) {
+    val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(8.dp),
@@ -1901,11 +1972,30 @@ fun StanzaCard(stanza: Stanza) {
                         }
                     }
                 }
-                Text(
-                    text = "Rhyme: ${(stanza.rhymeScore * 100).toInt()}%",
-                    fontSize = 10.sp,
-                    color = ElyG1Lexical
-                )
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "Rhyme: ${(stanza.rhymeScore * 100).toInt()}%",
+                        fontSize = 10.sp,
+                        color = ElyG1Lexical
+                    )
+                    IconButton(
+                        onClick = {
+                            val stanzaText = stanza.lines.joinToString("\n")
+                            clipboardManager.setText(AnnotatedString(stanzaText))
+                            val sysClipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                            sysClipboard?.setPrimaryClip(ClipData.newPlainText(stanza.type, stanzaText))
+                            Toast.makeText(context, "Copied ${stanza.type} to clipboard", Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier.size(20.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ContentCopy,
+                            contentDescription = "Copy Stanza",
+                            tint = ElyTextSecondary,
+                            modifier = Modifier.size(12.dp)
+                        )
+                    }
+                }
             }
 
             stanza.lines.forEachIndexed { index, line ->

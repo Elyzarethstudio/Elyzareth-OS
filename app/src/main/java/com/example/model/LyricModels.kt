@@ -106,6 +106,8 @@ data class GeneratedSong(
     val acousticConstraint: ElyzarethAcousticConstraint? = ELYZARETH_RUSTIC_ACOUSTIC_v1,
     val sparseArrangementConstraints: SparseArrangementConstraints? = ELYZARETH_SPARSE_ARRANGEMENT_CONSTRAINTS_v1_0,
     val physicalAnchorDiagnostic: PhysicalAnchorDiagnosticResult? = null,
+    val sourceSpecimenId: String? = null,
+    val originalLyricSha256: String? = null,
     val createdTimeMillis: Long = System.currentTimeMillis()
 )
 
