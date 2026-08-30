@@ -2,13 +2,12 @@ package com.example.ui.tenants
 
 import android.content.Context
 import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -18,10 +17,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -29,31 +29,33 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.model.*
-import com.example.ui.components.ForensicWitnessPlayerDeck
 import com.example.ui.theme.*
 
 /**
  * 🛋️ CORPUS / LYRIC CURATOR (The Sitting Room)
  * Elyzareth OS — App 02
  *
- * Forensic Examination Workspace & Curatorial Triage.
- * Primary Visible Language: WITNESS • EXAMINATION • FINDINGS • DISPOSITION
+ * PHILOSOPHY:
+ * SYSTEM EXAMINES → SYSTEM RECOMMENDS → CURATOR DECIDES
  *
- * Responsive:
- * - Compact / Mobile Window: Vertically stacked curatorial sections, high-contrast readable typography,
- *   convenient specimen selector pill & quick ingress actions.
- * - Expanded / Desktop Window: Multi-column workstation layout with Corpus Explorer sidebar.
+ * Primary UI Focus:
+ * 1. The System's Recommendation (🟢 ACCEPTABLE / 🟡 REQUIRES CURATION / 🔴 REJECT)
+ * 2. The Full Lyric (The dominant specimen)
+ * 3. The Appropriate Action (Accept, Curate in App 01, Reject, Copy, Archive)
  *
- * Evidence Boundaries:
- * - G1–G5 internal technical details available in AUDIT / TECHNICAL DETAILS.
- * - NOT MEASURED is strictly displayed when physical audio/acoustic evidence is absent.
+ * Additional Capabilities:
+ * - Collapsible Forensic Details (G1–G6 audit kept secondary to avoid spreadsheet noise)
+ * - Lyric Dumping / Accepted Archive (with Copy to Suno/Diary & Delete with confirmation)
  */
 @Composable
 fun CorpusCuratorApp(
@@ -92,11 +94,20 @@ fun CorpusCuratorApp(
     onUpdateHumanEarReview: (String, String, HumanEarReview) -> Unit = { _, _, _ -> },
     onIngestSafFolder: (Context, Uri) -> Unit = { _, _ -> },
     onIngestSafDocument: (Context, Uri) -> Unit = { _, _ -> },
-    onStartSafScan: (Context, Uri) -> Unit = { _, _ -> }
+    onStartSafScan: (Context, Uri) -> Unit = { _, _ -> },
+    archiveFiles: List<ArchiveFile> = emptyList(),
+    onDeleteArchiveFile: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
 
-    // Android SAF System Picker Launchers
+    // Active View Mode: "EXAMINATION" or "LYRIC_DUMPING"
+    var activeViewMode by remember { mutableStateOf("EXAMINATION") }
+    var isSpecimenPickerOpen by remember { mutableStateOf(false) }
+    var isForensicDetailsExpanded by remember { mutableStateOf(false) }
+    var fileToDelete by remember { mutableStateOf<ArchiveFile?>(null) }
+
+    // SAF Document & Folder pickers
     val safFolderLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
     ) { uri: Uri? ->
@@ -113,112 +124,172 @@ fun CorpusCuratorApp(
             onIngestSafDocument(context, uri)
         }
     }
-    val filteredBases = remember(baseCompositions, corpusSearch) {
-        if (corpusSearch.isBlank()) baseCompositions
-        else baseCompositions.filter {
-            it.title.contains(corpusSearch, ignoreCase = true) ||
-            it.era.contains(corpusSearch, ignoreCase = true) ||
-            it.versions.any { v -> v.specimenId.contains(corpusSearch, ignoreCase = true) || v.lyricText.contains(corpusSearch, ignoreCase = true) }
-        }
-    }
 
     val selectedBase = baseCompositions.find { it.id == selectedBaseCompositionId }
         ?: baseCompositions.firstOrNull()
     val selectedVersion = selectedBase?.versions?.find { it.versionId == selectedVersionId }
         ?: selectedBase?.versions?.firstOrNull()
 
-    // Normalize curatorial view tab: INGEST → VERIFY → MEASURE → HUMAN EAR REVIEW → DISPOSITION
-    val currentTab = when (sittingRoomTab.uppercase()) {
-        "DRY RUN", "DRY RUN (~390)", "DRY_RUN", "INVENTORY" -> "DRY RUN (~390)"
-        "ALL" -> "DRY RUN (~390)"
-        "LYRIC", "WITNESS" -> "WITNESS"
-        "AUDIO", "EXAMINATION" -> "EXAMINATION"
-        "EVIDENCE", "FINDINGS" -> "FINDINGS"
-        "EAR REVIEW", "HUMAN EAR REVIEW", "LISTENING", "FORENSIC LISTENING" -> "HUMAN EAR REVIEW"
-        "DISPOSITION" -> "DISPOSITION"
-        "HISTORY", "AUDIT", "AUDIT & TECHNICAL" -> "AUDIT & TECHNICAL"
-        else -> "DRY RUN (~390)"
+    // Filter accepted lyrics for the Lyric Dumping view
+    val acceptedLyrics = remember(archiveFiles) {
+        archiveFiles.filter { it.category == "LYRICS" || it.originTenant.contains("Curator", ignoreCase = true) || it.fileName.endsWith(".lyr") }
     }
-
-    var isExplorerVisible by remember { mutableStateOf(true) }
-    var isMobileSpecimenPickerOpen by remember { mutableStateOf(false) }
-    var isTechnicalAuditExpanded by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(ElyBackground)
     ) {
-        // App 02 Top Forensic Header
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(ElyHeaderGlass)
-                .border(0.5.dp, ElyWindowBorderInactive)
-                .padding(horizontal = 10.dp, vertical = 6.dp)
+        // =========================================================================
+        // TOP CONTROL & NAVIGATION BAR
+        // =========================================================================
+        Surface(
+            color = ElyHeaderGlass,
+            border = BorderStroke(0.5.dp, ElyWindowBorderInactive),
+            modifier = Modifier.fillMaxWidth()
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
+                // Workspace Header & Specimen Selector
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.weight(1f)
                 ) {
-                    Text(
-                        text = "🛋️",
-                        fontSize = 16.sp
-                    )
+                    Text("🛋️", fontSize = 18.sp)
                     Column {
-                        Text(
-                            text = "ELYZARETH OS // SITTING ROOM",
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace,
-                            color = ElyPurple
-                        )
-                        Text(
-                            text = "Forensic Examination Workspace & Curatorial Triage",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = ElyTextPrimary
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                text = "SITTING ROOM",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace,
+                                color = ElyPurple
+                            )
+                            Text(
+                                text = "• CORPUS CURATOR",
+                                fontSize = 9.sp,
+                                fontFamily = FontFamily.Monospace,
+                                color = ElyTextSecondary
+                            )
+                        }
+
+                        if (selectedBase != null && selectedVersion != null) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .clickable { isSpecimenPickerOpen = true }
+                                    .padding(vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = selectedBase.title,
+                                    fontSize = 12.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = ElyTextPrimary,
+                                    maxLines = 1
+                                )
+                                Surface(
+                                    color = ElyPurple.copy(alpha = 0.2f),
+                                    shape = RoundedCornerShape(3.dp)
+                                ) {
+                                    Text(
+                                        text = selectedVersion.versionId,
+                                        fontSize = 9.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.Bold,
+                                        color = ElyPurple,
+                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                    )
+                                }
+                                Text("▾", fontSize = 11.sp, color = ElyPurple)
+                            }
+                        }
                     }
                 }
 
+                // Mode Tabs & Actions
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Box(
+                    // View Mode Switcher
+                    Row(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(ElyHeaderGlass)
-                            .border(0.5.dp, ElyG3Axiom.copy(alpha = 0.5f), RoundedCornerShape(4.dp))
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(ElySurfaceCard)
+                            .border(0.5.dp, ElyWindowBorderInactive, RoundedCornerShape(6.dp))
+                            .padding(2.dp),
+                        horizontalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
-                        Text(
-                            text = "IMMUTABLE WITNESS",
-                            fontSize = 8.sp,
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.Bold,
-                            color = ElyG3Axiom
-                        )
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = if (activeViewMode == "EXAMINATION") ElyPurple else Color.Transparent,
+                            modifier = Modifier.clickable { activeViewMode = "EXAMINATION" }
+                        ) {
+                            Text(
+                                text = "🔬 Examination",
+                                fontSize = 9.5.sp,
+                                fontWeight = if (activeViewMode == "EXAMINATION") FontWeight.Bold else FontWeight.Normal,
+                                color = if (activeViewMode == "EXAMINATION") Color.White else ElyTextSecondary,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = if (activeViewMode == "LYRIC_DUMPING") ElyPurple else Color.Transparent,
+                            modifier = Modifier.clickable { activeViewMode = "LYRIC_DUMPING" }
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Text(
+                                    text = "📦 Lyric Dumping",
+                                    fontSize = 9.5.sp,
+                                    fontWeight = if (activeViewMode == "LYRIC_DUMPING") FontWeight.Bold else FontWeight.Normal,
+                                    color = if (activeViewMode == "LYRIC_DUMPING") Color.White else ElyTextSecondary
+                                )
+                                if (acceptedLyrics.isNotEmpty()) {
+                                    Surface(
+                                        color = if (activeViewMode == "LYRIC_DUMPING") Color.White.copy(alpha = 0.25f) else ElyPurple.copy(alpha = 0.2f),
+                                        shape = RoundedCornerShape(10.dp)
+                                    ) {
+                                        Text(
+                                            text = "${acceptedLyrics.size}",
+                                            fontSize = 8.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (activeViewMode == "LYRIC_DUMPING") Color.White else ElyPurple,
+                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
 
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(ElyPurple.copy(alpha = 0.15f))
-                            .border(0.5.dp, ElyPurple.copy(alpha = 0.5f), RoundedCornerShape(4.dp))
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    // Ingress Specimen Button
+                    Button(
+                        onClick = { onOpenIngressDialog("LYRIC") },
+                        colors = ButtonDefaults.buttonColors(containerColor = ElyHeaderGlass),
+                        border = BorderStroke(0.5.dp, ElyPurple.copy(alpha = 0.6f)),
+                        shape = RoundedCornerShape(4.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                        modifier = Modifier.height(28.dp)
                     ) {
                         Text(
-                            text = "HUMAN GOVERNOR",
-                            fontSize = 8.sp,
-                            fontWeight = FontWeight.Bold,
+                            text = "+ Ingress",
+                            fontSize = 9.sp,
                             fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold,
                             color = ElyPurple
                         )
                     }
@@ -226,451 +297,88 @@ fun CorpusCuratorApp(
             }
         }
 
-        // Responsive Work Area Container
-        BoxWithConstraints(
+        // =========================================================================
+        // BODY AREA (EXAMINATION WORKSPACE OR LYRIC DUMPING ARCHIVE)
+        // =========================================================================
+        Box(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
+                .padding(horizontal = 10.dp, vertical = 8.dp)
         ) {
-            val totalWidth = maxWidth
-            val isCompact = totalWidth < 580.dp
-
-            if (isCompact) {
-                // ==========================================
-                // MOBILE / COMPACT WINDOW PRESENTATION
-                // ==========================================
-                MobileCuratorialWorkspace(
-                    selectedBase = selectedBase,
-                    selectedVersion = selectedVersion,
-                    baseCompositions = baseCompositions,
-                    currentTab = currentTab,
-                    corpusInventoryReport = corpusInventoryReport,
-                    selectedGateDiagnostic = selectedGateDiagnostic,
-                    isTechnicalAuditExpanded = isTechnicalAuditExpanded,
-                    onSelectTab = onSelectTab,
-                    onSelectVersion = onSelectVersion,
-                    onSelectGate = onSelectGate,
-                    onToggleTechnicalAudit = { isTechnicalAuditExpanded = !isTechnicalAuditExpanded },
-                    onOpenPicker = { isMobileSpecimenPickerOpen = true },
-                    onOpenIngressDialog = onOpenIngressDialog,
-                    onPreserve = onPreserve,
-                    onAccept = onAccept,
-                    onSendToEngine = onSendToEngine,
-                    onCommitHumanGovernorDisposition = onCommitHumanGovernorDisposition,
-                    onCommitHumanEarDisposition = onCommitHumanEarDisposition,
-                    onUpdateHumanEarReview = onUpdateHumanEarReview,
-                    onStartSafScan = onStartSafScan
+            if (activeViewMode == "LYRIC_DUMPING") {
+                // =====================================================================
+                // LYRIC DUMPING // ACCEPTED ARCHIVE VIEW
+                // =====================================================================
+                LyricDumpingArchiveView(
+                    acceptedLyrics = acceptedLyrics,
+                    onCopyLyric = { lyricText, fileName ->
+                        clipboardManager.setText(AnnotatedString(lyricText))
+                        Toast.makeText(context, "Copied '$fileName' to clipboard for Diary/Suno", Toast.LENGTH_SHORT).show()
+                    },
+                    onRequestDelete = { file ->
+                        fileToDelete = file
+                    },
+                    onSwitchToExamination = {
+                        activeViewMode = "EXAMINATION"
+                    }
                 )
             } else {
-                // ==========================================
-                // DESKTOP / EXPANDED WORKSTATION PRESENTATION
-                // ==========================================
-                Row(modifier = Modifier.fillMaxSize()) {
-                    // LEFT ZONE: Corpus Explorer Sidebar
-                    if (isExplorerVisible) {
-                        Column(
-                            modifier = Modifier
-                                .width(150.dp)
-                                .fillMaxHeight()
-                                .background(ElySurfaceCard.copy(alpha = 0.7f))
-                                .border(0.5.dp, ElyWindowBorderInactive)
-                                .padding(6.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "CORPUS EXPLORER",
-                                    fontSize = 8.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = FontFamily.Monospace,
-                                    color = ElyTextSecondary
-                                )
-                                Icon(
-                                    imageVector = Icons.Default.Close,
-                                    contentDescription = "Hide Explorer",
-                                    tint = ElyTextTertiary,
-                                    modifier = Modifier
-                                        .size(14.dp)
-                                        .clickable { isExplorerVisible = false }
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(4.dp))
-
-                            // Search Bar
-                            OutlinedTextField(
-                                value = corpusSearch,
-                                onValueChange = onSearchChange,
-                                placeholder = { Text("Search...", fontSize = 8.5.sp, color = ElyTextTertiary) },
-                                singleLine = true,
-                                textStyle = LocalTextStyle.current.copy(fontSize = 9.sp, color = ElyTextPrimary),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = ElyPurple,
-                                    unfocusedBorderColor = ElyWindowBorderInactive,
-                                    focusedContainerColor = ElyHeaderGlass,
-                                    unfocusedContainerColor = ElyHeaderGlass
-                                ),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(34.dp),
-                                shape = RoundedCornerShape(4.dp)
-                            )
-
-                            Spacer(modifier = Modifier.height(4.dp))
-
-                            // Dry Run Quick Launcher
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .background(if (currentTab == "DRY RUN (~390)") ElyPurple else ElyHeaderGlass)
-                                    .border(0.5.dp, ElyPurple.copy(alpha = 0.6f), RoundedCornerShape(4.dp))
-                                    .clickable { onSelectTab("DRY RUN (~390)") }
-                                    .padding(vertical = 5.dp, horizontal = 4.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = "⚡ DRY RUN (~390)",
-                                    fontSize = 8.5.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (currentTab == "DRY RUN (~390)") Color.White else ElyPurple
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.height(4.dp))
-
-                            // Ingress Buttons
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(3.dp)
-                            ) {
-                                IngressButton("+ CORP", { onOpenIngressDialog("CORPUS") }, Modifier.weight(1f))
-                                IngressButton("+ LYR", { onOpenIngressDialog("LYRIC") }, Modifier.weight(1f))
-                                IngressButton("+ AUD", { onOpenIngressDialog("AUDIO") }, Modifier.weight(1f))
-                                IngressButton("📁 SAF", { safFolderLauncher.launch(null) }, Modifier.weight(1f))
-                            }
-
-                            Spacer(modifier = Modifier.height(6.dp))
-
-                            // Corpus Hierarchy List
-                            LazyColumn(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .fillMaxWidth(),
-                                verticalArrangement = Arrangement.spacedBy(3.dp)
-                            ) {
-                                items(filteredBases) { base ->
-                                    val isBaseSelected = base.id == selectedBase?.id
-                                    Column(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clip(RoundedCornerShape(4.dp))
-                                            .background(if (isBaseSelected) ElyTileActive else Color.Transparent)
-                                            .clickable { onSelectBaseComposition(base.id) }
-                                            .padding(4.dp)
-                                    ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(3.dp)
-                                        ) {
-                                            Text(
-                                                text = if (isBaseSelected) "📂" else "📁",
-                                                fontSize = 9.sp
-                                            )
-                                            Text(
-                                                text = base.title,
-                                                fontSize = 8.5.sp,
-                                                fontWeight = if (isBaseSelected) FontWeight.Bold else FontWeight.Normal,
-                                                color = if (isBaseSelected) ElyTextPrimary else ElyTextSecondary,
-                                                maxLines = 1
-                                            )
-                                        }
-
-                                        // Child Version Nodes
-                                        if (isBaseSelected) {
-                                            Column(modifier = Modifier.padding(start = 10.dp, top = 3.dp)) {
-                                                base.versions.forEach { version ->
-                                                    val isVerSelected = version.versionId == selectedVersion?.versionId
-                                                    val (statusColor, statusLabel) = when (version.decision) {
-                                                        SpecimenDecision.ACCEPT -> Pair(ElyG3Axiom, "🟢")
-                                                        SpecimenDecision.NEEDS_HEALING -> Pair(ElyAmberWarning, "🟡")
-                                                        SpecimenDecision.NOT_ELIGIBLE -> Pair(ElyError, "🔴")
-                                                        SpecimenDecision.NOT_YET_EXAMINED -> Pair(ElyTextTertiary, "⚪")
-                                                    }
-                                                    Row(
-                                                        verticalAlignment = Alignment.CenterVertically,
-                                                        modifier = Modifier
-                                                            .fillMaxWidth()
-                                                            .clip(RoundedCornerShape(3.dp))
-                                                            .background(if (isVerSelected) ElyHeaderGlass else Color.Transparent)
-                                                            .clickable { onSelectVersion(version.versionId) }
-                                                            .padding(horizontal = 4.dp, vertical = 2.dp)
-                                                    ) {
-                                                        Text(text = statusLabel, fontSize = 7.sp)
-                                                        Spacer(modifier = Modifier.width(3.dp))
-                                                        Column {
-                                                            Text(
-                                                                text = version.versionId,
-                                                                fontSize = 8.sp,
-                                                                fontFamily = FontFamily.Monospace,
-                                                                fontWeight = if (isVerSelected) FontWeight.Bold else FontWeight.Normal,
-                                                                color = if (isVerSelected) ElyTextPrimary else ElyTextSecondary
-                                                            )
-                                                            Text(
-                                                                text = version.specimenId,
-                                                                fontSize = 6.5.sp,
-                                                                fontFamily = FontFamily.Monospace,
-                                                                color = ElyTextTertiary
-                                                            )
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // RIGHT ZONE: Expanded Forensic Examination Workstation
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight()
-                            .padding(8.dp)
-                    ) {
-                        if (selectedBase != null && selectedVersion != null) {
-                            // Specimen Header Banner
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    if (!isExplorerVisible) {
-                                        Box(
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(4.dp))
-                                                .background(ElyHeaderGlass)
-                                                .border(0.5.dp, ElyPurple.copy(alpha = 0.5f), RoundedCornerShape(4.dp))
-                                                .clickable { isExplorerVisible = true }
-                                                .padding(horizontal = 6.dp, vertical = 4.dp)
-                                        ) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(3.dp)
-                                            ) {
-                                                Icon(imageVector = Icons.Default.Folder, contentDescription = null, tint = ElyPurple, modifier = Modifier.size(12.dp))
-                                                Text("Corpus", fontSize = 8.5.sp, fontFamily = FontFamily.Monospace, color = ElyPurple)
-                                            }
-                                        }
-                                    }
-
-                                    Column {
-                                        Text(
-                                            text = selectedBase.title.uppercase(),
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = ElyTextPrimary
-                                        )
-                                        Text(
-                                            text = "Specimen: ${selectedVersion.specimenId} • Version: ${selectedVersion.versionId} • Origin: ${selectedVersion.sourceOrigin.name.replace('_', ' ')}",
-                                            fontSize = 9.sp,
-                                            color = ElyTextSecondary
-                                        )
-                                    }
-                                }
-
-                                // Immutable Stamp Badge
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(4.dp))
-                                        .background(ElyHeaderGlass)
-                                        .border(0.5.dp, ElyG3Axiom.copy(alpha = 0.5f), RoundedCornerShape(4.dp))
-                                        .padding(horizontal = 6.dp, vertical = 3.dp)
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                    ) {
-                                        Icon(imageVector = Icons.Default.Lock, contentDescription = null, tint = ElyG3Axiom, modifier = Modifier.size(10.dp))
-                                        Text(text = "WITNESS VERIFIED", fontSize = 8.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, color = ElyG3Axiom)
-                                    }
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(6.dp))
-
-                            // Curatorial Navigation Tabs
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(ElyHeaderGlass)
-                                    .padding(3.dp),
-                                horizontalArrangement = Arrangement.spacedBy(3.dp)
-                            ) {
-                                val tabs = listOf("DRY RUN (~390)", "WITNESS", "EXAMINATION", "FINDINGS", "HUMAN EAR REVIEW", "DISPOSITION", "AUDIT & TECHNICAL")
-                                tabs.forEach { tab ->
-                                    val isTabSelected = (currentTab == tab)
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .clip(RoundedCornerShape(4.dp))
-                                            .background(if (isTabSelected) ElyTileActive else Color.Transparent)
-                                            .clickable { onSelectTab(tab) }
-                                            .padding(vertical = 5.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = tab,
-                                            fontSize = 9.sp,
-                                            fontWeight = if (isTabSelected) FontWeight.Bold else FontWeight.Normal,
-                                            fontFamily = FontFamily.Monospace,
-                                            color = if (isTabSelected) ElyPurple else ElyTextSecondary,
-                                            maxLines = 1
-                                        )
-                                    }
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(6.dp))
-
-                            // Tab Body Area
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(ElySurfaceCard)
-                                    .border(0.5.dp, ElyWindowBorderInactive, RoundedCornerShape(6.dp))
-                                    .padding(8.dp)
-                            ) {
-                                when (currentTab) {
-                                    "DRY RUN (~390)", "DRY RUN" -> CorpusDiscoveryReportView(
-                                        report = corpusInventoryReport,
-                                        onStartSafScan = onStartSafScan
-                                    )
-                                    "WITNESS" -> DesktopWitnessView(selectedVersion)
-                                    "EXAMINATION" -> ExaminationSectionView(selectedVersion)
-                                    "FINDINGS" -> FindingsSectionView(selectedVersion)
-                                    "HUMAN EAR REVIEW", "EAR REVIEW" -> HumanEarReviewSectionView(
-                                        baseComposition = selectedBase,
-                                        selectedVersion = selectedVersion,
-                                        onCommitHumanEarDisposition = onCommitHumanEarDisposition,
-                                        onUpdateHumanEarReview = onUpdateHumanEarReview
-                                    )
-                                    "DISPOSITION" -> DispositionSectionView(
-                                        selectedVersion = selectedVersion,
-                                        onPreserve = onPreserve,
-                                        onAccept = onAccept,
-                                        onSendToEngine = onSendToEngine,
-                                        onCommitHumanGovernorDisposition = onCommitHumanGovernorDisposition
-                                    )
-                                    "AUDIT & TECHNICAL" -> AuditSectionView(
-                                        selectedVersion = selectedVersion,
-                                        selectedGateDiagnostic = selectedGateDiagnostic,
-                                        onSelectGate = onSelectGate
-                                    )
-                                    else -> DesktopWitnessView(selectedVersion)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Bottom Status Bar
-        if (selectedVersion != null) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(ElyHeaderGlass)
-                    .border(0.5.dp, ElyWindowBorderInactive)
-                    .padding(horizontal = 12.dp, vertical = 6.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Text(
-                            text = "STATUS:",
-                            fontSize = 8.5.sp,
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.Bold,
-                            color = ElyTextSecondary
-                        )
-                        Text(
-                            text = "Witness: VERIFIED",
-                            fontSize = 8.5.sp,
-                            fontFamily = FontFamily.Monospace,
-                            color = ElyG3Axiom
-                        )
-                        Text(text = "•", fontSize = 8.5.sp, color = ElyTextTertiary)
-                        Text(
-                            text = "Lyric: EXAMINED",
-                            fontSize = 8.5.sp,
-                            fontFamily = FontFamily.Monospace,
-                            color = ElyG3Axiom
-                        )
-                        Text(text = "•", fontSize = 8.5.sp, color = ElyTextTertiary)
-                        val audioMeasured = selectedVersion.audioWitness?.isMeasured == true
-                        Text(
-                            text = if (audioMeasured) "Audio: MEASURED" else "Audio: NOT MEASURED",
-                            fontSize = 8.5.sp,
-                            fontFamily = FontFamily.Monospace,
-                            color = if (audioMeasured) ElyG3Axiom else ElyAmberWarning
-                        )
-                        Text(text = "•", fontSize = 8.5.sp, color = ElyTextTertiary)
-                        Text(
-                            text = "Governor: AWAITING",
-                            fontSize = 8.5.sp,
-                            fontFamily = FontFamily.Monospace,
-                            color = ElyPurple
-                        )
-                    }
-
+                // =====================================================================
+                // SPECIMEN EXAMINATION VIEW (System Examines -> Recommends -> Curator Decides)
+                // =====================================================================
+                if (selectedBase == null || selectedVersion == null) {
                     Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(3.dp))
-                            .background(ElyTileActive)
-                            .border(0.5.dp, ElyPurple.copy(alpha = 0.4f), RoundedCornerShape(3.dp))
-                            .clickable {
-                                onSelectTab(if (currentTab == "AUDIT & TECHNICAL") "ALL" else "AUDIT & TECHNICAL")
-                                isTechnicalAuditExpanded = !isTechnicalAuditExpanded
-                            }
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = if (isTechnicalAuditExpanded || currentTab == "AUDIT & TECHNICAL") "Hide Audit ✕" else "Audit Details ▾",
-                            fontSize = 8.sp,
-                            fontFamily = FontFamily.Monospace,
-                            color = ElyPurple
-                        )
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text("No Specimen Ingressed in Sitting Room", fontSize = 14.sp, color = ElyTextSecondary)
+                            Button(
+                                onClick = { onOpenIngressDialog("LYRIC") },
+                                colors = ButtonDefaults.buttonColors(containerColor = ElyPurple)
+                            ) {
+                                Text("+ Ingress Specimen", color = Color.White)
+                            }
+                        }
                     }
+                } else {
+                    SpecimenExaminationWorkspace(
+                        base = selectedBase,
+                        version = selectedVersion,
+                        allBases = baseCompositions,
+                        isForensicDetailsExpanded = isForensicDetailsExpanded,
+                        onToggleForensicDetails = { isForensicDetailsExpanded = !isForensicDetailsExpanded },
+                        onSelectBaseComposition = onSelectBaseComposition,
+                        onSelectVersion = onSelectVersion,
+                        onAccept = onAccept,
+                        onCurateInEngine = onSendToEngine,
+                        onReject = {
+                            onCommitHumanGovernorDisposition(
+                                GovernanceDispositionChoice.PERMANENT_REJECT,
+                                "Rejected by Curator in Sitting Room"
+                            )
+                        },
+                        onCopyLyric = { text ->
+                            clipboardManager.setText(AnnotatedString(text))
+                            Toast.makeText(context, "Lyric copied to clipboard", Toast.LENGTH_SHORT).show()
+                        }
+                    )
                 }
             }
         }
     }
 
-    // Mobile Specimen Picker Sheet Dialog
-    if (isMobileSpecimenPickerOpen) {
-        Dialog(onDismissRequest = { isMobileSpecimenPickerOpen = false }) {
+    // =========================================================================
+    // SPECIMEN PICKER DIALOG (Fast switcher across specimens)
+    // =========================================================================
+    if (isSpecimenPickerOpen) {
+        Dialog(onDismissRequest = { isSpecimenPickerOpen = false }) {
             Surface(
-                shape = RoundedCornerShape(10.dp),
+                shape = RoundedCornerShape(8.dp),
                 color = ElyBackground,
                 border = BorderStroke(1.dp, ElyPurple),
                 modifier = Modifier
@@ -689,8 +397,8 @@ fun CorpusCuratorApp(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "SELECT CORPUS SPECIMEN",
-                            fontSize = 12.sp,
+                            text = "SELECT SPECIMEN FOR EXAMINATION",
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             fontFamily = FontFamily.Monospace,
                             color = ElyPurple
@@ -700,8 +408,8 @@ fun CorpusCuratorApp(
                             contentDescription = "Close",
                             tint = ElyTextSecondary,
                             modifier = Modifier
-                                .size(18.dp)
-                                .clickable { isMobileSpecimenPickerOpen = false }
+                                .size(16.dp)
+                                .clickable { isSpecimenPickerOpen = false }
                         )
                     }
 
@@ -710,7 +418,7 @@ fun CorpusCuratorApp(
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(max = 300.dp),
+                            .heightIn(max = 320.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         items(baseCompositions) { base ->
@@ -720,28 +428,19 @@ fun CorpusCuratorApp(
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(6.dp))
                                     .background(if (isBaseSelected) ElyTileActive else ElyHeaderGlass)
-                                    .border(0.5.dp, if (isBaseSelected) ElyPurple else ElyWindowBorderInactive, RoundedCornerShape(6.dp))
+                                    .border(
+                                        0.5.dp,
+                                        if (isBaseSelected) ElyPurple else ElyWindowBorderInactive,
+                                        RoundedCornerShape(6.dp)
+                                    )
                                     .padding(8.dp)
                             ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable {
-                                            onSelectBaseComposition(base.id)
-                                            base.versions.firstOrNull()?.let { onSelectVersion(it.versionId) }
-                                        },
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Text("📂", fontSize = 14.sp)
-                                    Text(
-                                        text = base.title,
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = ElyTextPrimary
-                                    )
-                                }
-
+                                Text(
+                                    text = base.title,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = ElyTextPrimary
+                                )
                                 Spacer(modifier = Modifier.height(4.dp))
 
                                 base.versions.forEach { ver ->
@@ -754,29 +453,30 @@ fun CorpusCuratorApp(
                                             .clickable {
                                                 onSelectBaseComposition(base.id)
                                                 onSelectVersion(ver.versionId)
-                                                isMobileSpecimenPickerOpen = false
+                                                isSpecimenPickerOpen = false
                                             }
-                                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                                            .padding(horizontal = 8.dp, vertical = 5.dp),
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
                                         Text(
-                                            text = "• ${ver.versionId} (${ver.specimenId})",
+                                            text = "• Version ${ver.versionId} (${ver.specimenId})",
                                             fontSize = 10.sp,
                                             fontFamily = FontFamily.Monospace,
                                             color = if (isVerSelected) ElyPurple else ElyTextSecondary
                                         )
-                                        val statusBadge = when (ver.decision) {
-                                            SpecimenDecision.ACCEPT -> "🟢 ACCEPT"
-                                            SpecimenDecision.NEEDS_HEALING -> "🟡 HEAL"
-                                            SpecimenDecision.NOT_ELIGIBLE -> "🔴 REJECT"
-                                            SpecimenDecision.NOT_YET_EXAMINED -> "⚪ UNEXAMINED"
+                                        val (statusLabel, statusColor) = when (ver.decision) {
+                                            SpecimenDecision.ACCEPT -> "🟢 ACCEPTABLE" to ElyG3Axiom
+                                            SpecimenDecision.NEEDS_HEALING -> "🟡 CURATION NEEDED" to ElyAmberWarning
+                                            SpecimenDecision.NOT_ELIGIBLE -> "🔴 REJECTED" to ElyError
+                                            SpecimenDecision.NOT_YET_EXAMINED -> "⚪ UNEXAMINED" to ElyTextSecondary
                                         }
                                         Text(
-                                            text = statusBadge,
+                                            text = statusLabel,
                                             fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
                                             fontFamily = FontFamily.Monospace,
-                                            color = ElyTextPrimary
+                                            color = statusColor
                                         )
                                     }
                                 }
@@ -788,7 +488,78 @@ fun CorpusCuratorApp(
         }
     }
 
-    // Ingress Specimen Modal Dialog
+    // =========================================================================
+    // DELETE CONFIRMATION DIALOG (For Lyric Dumping Archive)
+    // =========================================================================
+    fileToDelete?.let { targetFile ->
+        Dialog(onDismissRequest = { fileToDelete = null }) {
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = ElyBackground,
+                border = BorderStroke(1.dp, ElyError),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(8.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text("🗑️", fontSize = 18.sp)
+                        Text(
+                            text = "DELETE ARCHIVED LYRIC?",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
+                            color = ElyError
+                        )
+                    }
+
+                    Text(
+                        text = "Are you sure you want to permanently delete '${targetFile.fileName}' from the Lyric Dumping archive?\n\nAccepted lyrics are typically copied onward to Suno or your Diary, so removing them here safely clears local OS storage.",
+                        fontSize = 11.sp,
+                        color = ElyTextSecondary,
+                        lineHeight = 16.sp
+                    )
+
+                    HorizontalDivider(color = ElyWindowBorderInactive, thickness = 0.5.dp)
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        TextButton(
+                            onClick = { fileToDelete = null }
+                        ) {
+                            Text("Cancel", color = ElyTextSecondary, fontSize = 11.sp)
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Button(
+                            onClick = {
+                                onDeleteArchiveFile(targetFile.id)
+                                fileToDelete = null
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = ElyError),
+                            shape = RoundedCornerShape(4.dp)
+                        ) {
+                            Text("Delete Permanently", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // =========================================================================
+    // INGRESS SPECIMEN DIALOG
+    // =========================================================================
     if (isIngressDialogOpen) {
         Dialog(onDismissRequest = onCloseIngressDialog) {
             Surface(
@@ -812,8 +583,8 @@ fun CorpusCuratorApp(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "FORENSIC SPECIMEN INGRESS // $ingressDialogType",
-                            fontSize = 10.5.sp,
+                            text = "FORENSIC SPECIMEN INGRESS",
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             fontFamily = FontFamily.Monospace,
                             color = ElyPurple
@@ -843,28 +614,29 @@ fun CorpusCuratorApp(
                             focusedContainerColor = ElyHeaderGlass,
                             unfocusedContainerColor = ElyHeaderGlass
                         ),
-                        modifier = Modifier.fillMaxWidth().height(44.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp),
                         shape = RoundedCornerShape(4.dp)
                     )
 
                     // Origin
-                    Text("Physical Source Origin:", fontSize = 9.5.sp, color = ElyTextSecondary)
+                    Text("Source Origin:", fontSize = 9.5.sp, color = ElyTextSecondary)
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         items(IngressSourceOrigin.entries) { origin ->
                             val isSel = origin == ingressSourceOrigin
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .background(if (isSel) ElyPurple else ElyHeaderGlass)
-                                    .border(0.5.dp, if (isSel) ElyPurple else ElyWindowBorderInactive, RoundedCornerShape(4.dp))
-                                    .clickable { onIngressSourceOriginChange(origin) }
-                                    .padding(horizontal = 6.dp, vertical = 4.dp)
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = if (isSel) ElyPurple else ElyHeaderGlass,
+                                border = BorderStroke(0.5.dp, if (isSel) ElyPurple else ElyWindowBorderInactive),
+                                modifier = Modifier.clickable { onIngressSourceOriginChange(origin) }
                             ) {
                                 Text(
                                     text = origin.name.replace('_', ' '),
                                     fontSize = 8.5.sp,
                                     fontFamily = FontFamily.Monospace,
-                                    color = if (isSel) Color.White else ElyTextSecondary
+                                    color = if (isSel) Color.White else ElyTextSecondary,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
                                 )
                             }
                         }
@@ -883,7 +655,7 @@ fun CorpusCuratorApp(
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text("ANDROID SAF SYSTEM PICKER", fontSize = 9.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, color = ElyPurple)
-                                Text("Select local folder tree or artifact directly via Android SAF", fontSize = 8.sp, color = ElyTextSecondary)
+                                Text("Select local folder tree or artifact directly via SAF", fontSize = 8.sp, color = ElyTextSecondary)
                             }
                             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Button(
@@ -893,7 +665,7 @@ fun CorpusCuratorApp(
                                     contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
                                     modifier = Modifier.height(28.dp)
                                 ) {
-                                    Text("📂 Folder", fontSize = 8.sp, fontFamily = FontFamily.Monospace, color = Color.White)
+                                    Text("📂 Folder", fontSize = 8.sp, color = Color.White)
                                 }
                                 Button(
                                     onClick = { safDocumentLauncher.launch(arrayOf("*/*")) },
@@ -902,7 +674,7 @@ fun CorpusCuratorApp(
                                     contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
                                     modifier = Modifier.height(28.dp)
                                 ) {
-                                    Text("📄 File", fontSize = 8.sp, fontFamily = FontFamily.Monospace, color = ElyTextPrimary)
+                                    Text("📄 File", fontSize = 8.sp, color = ElyTextPrimary)
                                 }
                             }
                         }
@@ -921,7 +693,9 @@ fun CorpusCuratorApp(
                             focusedContainerColor = ElyHeaderGlass,
                             unfocusedContainerColor = ElyHeaderGlass
                         ),
-                        modifier = Modifier.fillMaxWidth().height(100.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(110.dp),
                         shape = RoundedCornerShape(4.dp)
                     )
 
@@ -946,42 +720,14 @@ fun CorpusCuratorApp(
                         )
                     }
 
-                    if (ingressAudioIncluded) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("Audio Decoder Health:", fontSize = 9.5.sp, color = ElyTextSecondary)
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Button(
-                                    onClick = { onIngressAudioDecoderPassChange(true) },
-                                    colors = ButtonDefaults.buttonColors(containerColor = if (ingressAudioDecoderPass) ElyG3Axiom else ElyHeaderGlass),
-                                    shape = RoundedCornerShape(4.dp),
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                                    modifier = Modifier.height(28.dp)
-                                ) {
-                                    Text("PASS (Clean PCM)", fontSize = 8.5.sp, color = if (ingressAudioDecoderPass) Color.Black else ElyTextPrimary)
-                                }
-                                Button(
-                                    onClick = { onIngressAudioDecoderPassChange(false) },
-                                    colors = ButtonDefaults.buttonColors(containerColor = if (!ingressAudioDecoderPass) ElyError else ElyHeaderGlass),
-                                    shape = RoundedCornerShape(4.dp),
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                                    modifier = Modifier.height(28.dp)
-                                ) {
-                                    Text("FAIL (Corrupt Stream)", fontSize = 8.5.sp, color = if (!ingressAudioDecoderPass) Color.White else ElyTextPrimary)
-                                }
-                            }
-                        }
-                    }
-
                     // Commit Ingress Button
                     Button(
                         onClick = onCommitIngress,
                         colors = ButtonDefaults.buttonColors(containerColor = ElyPurple),
                         shape = RoundedCornerShape(6.dp),
-                        modifier = Modifier.fillMaxWidth().height(42.dp)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(42.dp)
                     ) {
                         Text("COMMIT TO FORENSIC INGRESS", fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace, color = Color.White)
                     }
@@ -991,812 +737,560 @@ fun CorpusCuratorApp(
     }
 }
 
-// ==============================================================================
-// MOBILE CURATORIAL WORKSPACE (Vertically Stacked, Highly Readable)
-// ==============================================================================
+// =============================================================================
+// SPECIMEN EXAMINATION WORKSPACE
+// Core philosophy: SYSTEM EXAMINES → SYSTEM RECOMMENDS → CURATOR DECIDES
+// =============================================================================
 @Composable
-private fun MobileCuratorialWorkspace(
-    selectedBase: BaseComposition?,
-    selectedVersion: SpecimenVersion?,
-    baseCompositions: List<BaseComposition>,
-    currentTab: String,
-    corpusInventoryReport: CorpusInventoryReport = CorpusInventoryReport(),
-    selectedGateDiagnostic: GateDiagnostic?,
-    isTechnicalAuditExpanded: Boolean,
-    onSelectTab: (String) -> Unit,
+private fun SpecimenExaminationWorkspace(
+    base: BaseComposition,
+    version: SpecimenVersion,
+    allBases: List<BaseComposition>,
+    isForensicDetailsExpanded: Boolean,
+    onToggleForensicDetails: () -> Unit,
+    onSelectBaseComposition: (String) -> Unit,
     onSelectVersion: (String) -> Unit,
-    onSelectGate: (GateDiagnostic?) -> Unit,
-    onToggleTechnicalAudit: () -> Unit,
-    onOpenPicker: () -> Unit,
-    onOpenIngressDialog: (String) -> Unit,
-    onPreserve: () -> Unit,
     onAccept: () -> Unit,
-    onSendToEngine: () -> Unit,
-    onCommitHumanGovernorDisposition: (GovernanceDispositionChoice, String) -> Unit,
-    onCommitHumanEarDisposition: (String, String, HumanEarDisposition, String) -> Unit = { _, _, _, _ -> },
-    onUpdateHumanEarReview: (String, String, HumanEarReview) -> Unit = { _, _, _ -> },
-    onStartSafScan: (Context, Uri) -> Unit = { _, _ -> }
+    onCurateInEngine: () -> Unit,
+    onReject: () -> Unit,
+    onCopyLyric: (String) -> Unit
 ) {
-    if (currentTab == "DRY RUN" || currentTab == "DRY RUN (~390)") {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 8.dp, vertical = 6.dp)
-        ) {
-            // Curatorial Navigation Filter Chips
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(ElyHeaderGlass)
-                    .padding(2.dp),
-                horizontalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
-                val sections = listOf("DRY RUN", "ALL", "WITNESS", "EXAMINATION", "FINDINGS", "HUMAN EAR REVIEW", "DISPOSITION")
-                sections.forEach { sec ->
-                    val isSelected = currentTab.startsWith(sec)
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(if (isSelected) ElyTileActive else Color.Transparent)
-                            .clickable { onSelectTab(sec) }
-                            .padding(vertical = 4.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = sec,
-                            fontSize = 7.5.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                            fontFamily = FontFamily.Monospace,
-                            color = if (isSelected) ElyPurple else ElyTextSecondary,
-                            maxLines = 1
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                CorpusDiscoveryReportView(
-                    report = corpusInventoryReport,
-                    onStartSafScan = onStartSafScan
-                )
-            }
-        }
-        return
-    }
-
-    if (selectedBase == null || selectedVersion == null) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            Text("No specimen selected in Sitting Room.", color = ElyTextSecondary, fontSize = 12.sp)
-        }
-        return
-    }
-
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 8.dp, vertical = 6.dp)
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        // Specimen Selector Header Bar
-        Row(
+        // ---------------------------------------------------------------------
+        // 1. SYSTEM'S RECOMMENDATION (Top Prominent Banner)
+        // ---------------------------------------------------------------------
+        SystemRecommendationBanner(
+            version = version,
+            onCurateInEngine = onCurateInEngine
+        )
+
+        // ---------------------------------------------------------------------
+        // 2. THE FULL LYRIC (The Visually Dominant Specimen)
+        // ---------------------------------------------------------------------
+        DominantLyricSpecimenCard(
+            base = base,
+            version = version,
+            onCopyLyric = onCopyLyric
+        )
+
+        // ---------------------------------------------------------------------
+        // 3. CURATOR DECIDES (Appropriate Primary Actions)
+        // ---------------------------------------------------------------------
+        CuratorDecisionBar(
+            decision = version.decision,
+            lyricText = version.lyricText,
+            onAccept = onAccept,
+            onCurateInEngine = onCurateInEngine,
+            onReject = onReject,
+            onCopyLyric = onCopyLyric
+        )
+
+        // ---------------------------------------------------------------------
+        // 4. FORENSIC DETAILS & TECHNICAL AUDIT (Secondary / Collapsed Area)
+        // ---------------------------------------------------------------------
+        ForensicTechnicalAuditCollapsible(
+            version = version,
+            isExpanded = isForensicDetailsExpanded,
+            onToggle = onToggleForensicDetails
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+    }
+}
+
+// =============================================================================
+// 1. SYSTEM RECOMMENDATION BANNER
+// =============================================================================
+@Composable
+private fun SystemRecommendationBanner(
+    version: SpecimenVersion,
+    onCurateInEngine: () -> Unit
+) {
+    val (recommendationTitle, bannerBg, bannerBorder, bannerIcon, subtitle) = when (version.decision) {
+        SpecimenDecision.ACCEPT -> {
+            Tuple5(
+                "🟢 SYSTEM RECOMMENDATION: ACCEPTABLE",
+                ElyG3Axiom.copy(alpha = 0.12f),
+                ElyG3Axiom.copy(alpha = 0.8f),
+                "✓",
+                "Specimen exhibits complete sovereign integrity across lyric meter and tactile witness anchors. Ready for canonical archive and export to Diary/Suno."
+            )
+        }
+        SpecimenDecision.NEEDS_HEALING -> {
+            Tuple5(
+                "🟡 SYSTEM RECOMMENDATION: REQUIRES CURATION",
+                ElyAmberWarning.copy(alpha = 0.12f),
+                ElyAmberWarning.copy(alpha = 0.8f),
+                "⚡",
+                "Identity & tactile witness anchors retained, but structural meter instability or chorus collapse detected. Permitted for automatic transfer to App 01 Lyric Generator."
+            )
+        }
+        SpecimenDecision.NOT_ELIGIBLE -> {
+            Tuple5(
+                "🔴 SYSTEM RECOMMENDATION: REJECT",
+                ElyError.copy(alpha = 0.12f),
+                ElyError.copy(alpha = 0.8f),
+                "✕",
+                "Total semantic or audio degradation. Zero recoverable identity or witness anchors. Rebuild prohibited by Governance protocol."
+            )
+        }
+        SpecimenDecision.NOT_YET_EXAMINED -> {
+            Tuple5(
+                "⚪ SYSTEM RECOMMENDATION: UNEXAMINED",
+                ElyHeaderGlass,
+                ElyWindowBorderInactive,
+                "?",
+                "Specimen has not completed forensic examination."
+            )
+        }
+    }
+
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = bannerBg,
+        border = BorderStroke(1.dp, bannerBorder),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(6.dp))
-                .background(ElyHeaderGlass)
-                .border(0.5.dp, ElyPurple.copy(alpha = 0.5f), RoundedCornerShape(6.dp))
-                .padding(horizontal = 8.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             Row(
-                modifier = Modifier
-                    .weight(1f)
-                    .clickable { onOpenPicker() },
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Icon(imageVector = Icons.Default.Folder, contentDescription = null, tint = ElyPurple, modifier = Modifier.size(16.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(
-                            text = selectedBase.title,
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = ElyTextPrimary,
-                            maxLines = 1
-                        )
-                        Text("▾", fontSize = 10.sp, color = ElyPurple)
-                    }
+                Text(
+                    text = bannerIcon,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = bannerBorder
+                )
+                Text(
+                    text = recommendationTitle,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
+                    color = bannerBorder
+                )
+            }
+
+            Text(
+                text = version.decisionReason.ifBlank { subtitle },
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
+                color = ElyTextPrimary,
+                lineHeight = 16.sp
+            )
+
+            if (version.decision == SpecimenDecision.NEEDS_HEALING) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(ElyAmberWarning.copy(alpha = 0.15f))
+                        .padding(horizontal = 8.dp, vertical = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
                     Text(
-                        text = "Ver: ${selectedVersion.versionId} • ${selectedVersion.specimenId.take(14)}...",
-                        fontSize = 8.5.sp,
+                        text = "💡 Clicking 'Curate in App 01' below will auto-fill the lyric and brief into the Lyric Generator.",
+                        fontSize = 10.sp,
+                        color = ElyAmberWarning
+                    )
+                }
+            }
+        }
+    }
+}
+
+// =============================================================================
+// 2. DOMINANT LYRIC SPECIMEN CARD
+// =============================================================================
+@Composable
+private fun DominantLyricSpecimenCard(
+    base: BaseComposition,
+    version: SpecimenVersion,
+    onCopyLyric: (String) -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = ElySurfaceCard,
+        border = BorderStroke(0.5.dp, ElyWindowBorderInactive),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            // Header Row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = "SPECIMEN LYRIC // ${base.title}",
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace,
+                        color = ElyPurple
+                    )
+                    Text(
+                        text = "${version.wordCount} words • ${version.stanzaCount} stanzas • Source: ${version.sourceOrigin.name.replace('_', ' ')}",
+                        fontSize = 9.sp,
                         fontFamily = FontFamily.Monospace,
                         color = ElyTextSecondary
                     )
                 }
-            }
 
-            // Quick Ingress Action
-            Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(ElyPurple.copy(alpha = 0.2f))
-                        .border(0.5.dp, ElyPurple.copy(alpha = 0.6f), RoundedCornerShape(4.dp))
-                        .clickable { onOpenIngressDialog("LYRIC") }
-                        .padding(horizontal = 6.dp, vertical = 4.dp)
+                Button(
+                    onClick = { onCopyLyric(version.lyricText) },
+                    colors = ButtonDefaults.buttonColors(containerColor = ElyHeaderGlass),
+                    border = BorderStroke(0.5.dp, ElyPurple.copy(alpha = 0.5f)),
+                    shape = RoundedCornerShape(4.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                    modifier = Modifier.height(26.dp)
                 ) {
-                    Text("+ Ingress", fontSize = 8.5.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, color = ElyPurple)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text("📋", fontSize = 10.sp)
+                        Text(
+                            text = "Copy Lyric",
+                            fontSize = 9.sp,
+                            fontFamily = FontFamily.Monospace,
+                            color = ElyTextPrimary
+                        )
+                    }
                 }
             }
-        }
 
-        Spacer(modifier = Modifier.height(6.dp))
+            HorizontalDivider(color = ElyWindowBorderInactive, thickness = 0.5.dp)
 
-        // Curatorial Navigation Filter Chips
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(6.dp))
-                .background(ElyHeaderGlass)
-                .padding(2.dp),
-            horizontalArrangement = Arrangement.spacedBy(2.dp)
-        ) {
-            val sections = listOf("DRY RUN", "ALL", "WITNESS", "EXAMINATION", "FINDINGS", "HUMAN EAR REVIEW", "DISPOSITION")
-            sections.forEach { sec ->
-                val isSelected = currentTab == sec
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(if (isSelected) ElyTileActive else Color.Transparent)
-                        .clickable { onSelectTab(sec) }
-                        .padding(vertical = 4.dp),
-                    contentAlignment = Alignment.Center
-                ) {
+            // Lyric Specimen Content (Dominant Monospace / Poetic Typography)
+            Surface(
+                shape = RoundedCornerShape(6.dp),
+                color = ElyBackground,
+                border = BorderStroke(0.5.dp, ElyWindowBorderInactive),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                SelectionContainer {
                     Text(
-                        text = sec,
-                        fontSize = 7.5.sp,
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                        text = version.lyricText,
+                        fontSize = 12.5.sp,
                         fontFamily = FontFamily.Monospace,
-                        color = if (isSelected) ElyPurple else ElyTextSecondary,
-                        maxLines = 1
+                        color = ElyTextPrimary,
+                        lineHeight = 20.sp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp)
                     )
                 }
             }
-        }
 
-        Spacer(modifier = Modifier.height(6.dp))
-
-        // Main Scrollable Examination Workspace
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            // 1. WITNESS SECTION
-            if (currentTab == "ALL" || currentTab == "WITNESS") {
-                SectionHeaderBadge("1. WITNESS", "IMMUTABLE SPECIMEN", ElyG3Axiom)
-                WitnessSectionCard(selectedVersion)
-            }
-
-            // 2. EXAMINATION SECTION
-            if (currentTab == "ALL" || currentTab == "EXAMINATION") {
-                SectionHeaderBadge("2. EXAMINATION", "FORENSIC DIAGNOSTIC SCOPE", ElyPurple)
-                ExaminationSectionView(selectedVersion)
-            }
-
-            // 3. FINDINGS SECTION
-            if (currentTab == "ALL" || currentTab == "FINDINGS") {
-                SectionHeaderBadge("3. FINDINGS", "EVIDENCE & ANCHOR SUMMARY", ElyCyan)
-                FindingsSectionView(selectedVersion)
-            }
-
-            // 4. HUMAN EAR REVIEW (FORENSIC LISTENING LAYER)
-            if (currentTab == "ALL" || currentTab == "HUMAN EAR REVIEW" || currentTab == "EAR REVIEW") {
-                SectionHeaderBadge("4. HUMAN EAR REVIEW", "FORENSIC LISTENING LAYER & AUDITORY DEFECT SCREENING", ElyPurple)
-                HumanEarReviewSectionView(
-                    baseComposition = selectedBase,
-                    selectedVersion = selectedVersion,
-                    onCommitHumanEarDisposition = onCommitHumanEarDisposition,
-                    onUpdateHumanEarReview = onUpdateHumanEarReview
-                )
-            }
-
-            // 5. DISPOSITION SECTION
-            if (currentTab == "ALL" || currentTab == "DISPOSITION") {
-                SectionHeaderBadge("5. DISPOSITION", "HUMAN GOVERNOR PROTOCOL (3.2.1.0)", ElyAmberWarning)
-                DispositionSectionView(
-                    selectedVersion = selectedVersion,
-                    onPreserve = onPreserve,
-                    onAccept = onAccept,
-                    onSendToEngine = onSendToEngine,
-                    onCommitHumanGovernorDisposition = onCommitHumanGovernorDisposition
-                )
-            }
-
-            // 5. AUDIT & TECHNICAL DETAILS SECTION
-            if (currentTab == "ALL" || currentTab == "AUDIT & TECHNICAL") {
+            // Optional Audio Witness summary strip
+            version.audioWitness?.let { audio ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(4.dp))
                         .background(ElyHeaderGlass)
                         .border(0.5.dp, ElyWindowBorderInactive, RoundedCornerShape(4.dp))
-                        .clickable { onToggleTechnicalAudit() }
-                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text("🎵", fontSize = 12.sp)
+                        Text(
+                            text = "Audio Witness: ${audio.durationFormatted}",
+                            fontSize = 9.5.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.SemiBold,
+                            color = ElyTextPrimary
+                        )
+                        Text("•", fontSize = 9.5.sp, color = ElyTextTertiary)
+                        Text(
+                            text = if (audio.isMeasured) "PCM ${audio.sampleRateKhz}kHz" else "NOT MEASURED",
+                            fontSize = 9.sp,
+                            fontFamily = FontFamily.Monospace,
+                            color = if (audio.isMeasured) ElyG3Axiom else ElyAmberWarning
+                        )
+                    }
                     Text(
-                        text = "AUDIT & TECHNICAL DETAILS (G1–G6)",
+                        text = "Peak: ${audio.peakDb} dB",
                         fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace,
-                        color = ElyPurple
-                    )
-                    Text(
-                        text = if (isTechnicalAuditExpanded || currentTab == "AUDIT & TECHNICAL") "▲ Collapse" else "▼ Expand",
-                        fontSize = 8.5.sp,
                         fontFamily = FontFamily.Monospace,
                         color = ElyTextSecondary
                     )
                 }
-
-                if (isTechnicalAuditExpanded || currentTab == "AUDIT & TECHNICAL") {
-                    AuditSectionView(
-                        selectedVersion = selectedVersion,
-                        selectedGateDiagnostic = selectedGateDiagnostic,
-                        onSelectGate = onSelectGate
-                    )
-                }
             }
-
-            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }
 
-// ==============================================================================
-// 1. WITNESS SECTION VIEWS
-// ==============================================================================
+// =============================================================================
+// 3. CURATOR DECIDES ACTION BAR
+// =============================================================================
 @Composable
-private fun WitnessSectionCard(selectedVersion: SpecimenVersionNode) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(6.dp))
-            .background(ElySurfaceCard)
-            .border(0.5.dp, ElyWindowBorderInactive, RoundedCornerShape(6.dp))
-            .padding(10.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+private fun CuratorDecisionBar(
+    decision: SpecimenDecision,
+    lyricText: String,
+    onAccept: () -> Unit,
+    onCurateInEngine: () -> Unit,
+    onReject: () -> Unit,
+    onCopyLyric: (String) -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = ElySurfaceCard,
+        border = BorderStroke(0.5.dp, ElyWindowBorderInactive),
+        modifier = Modifier.fillMaxWidth()
     ) {
-        // Top Witness Metrics Strip
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(4.dp))
-                .background(ElyHeaderGlass)
-                .border(0.5.dp, ElyWindowBorderInactive, RoundedCornerShape(4.dp))
-                .padding(horizontal = 8.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(text = "Words: ${selectedVersion.wordCount}", fontSize = 9.sp, fontFamily = FontFamily.Monospace, color = ElyTextPrimary)
-            Text(text = "Stanzas: ${selectedVersion.stanzaCount}", fontSize = 9.sp, fontFamily = FontFamily.Monospace, color = ElyTextPrimary)
-            Text(text = "Anchors: ${selectedVersion.objectCount}", fontSize = 9.sp, fontFamily = FontFamily.Monospace, color = ElyG3Axiom)
-            Text(text = "SHA: ${selectedVersion.sha256Hash.take(8)}...", fontSize = 8.5.sp, fontFamily = FontFamily.Monospace, color = ElyTextTertiary)
-        }
-
-        // Canonical Lyric Specimen Box
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(6.dp))
-                .background(ElyHeaderGlass.copy(alpha = 0.5f))
-                .border(0.5.dp, ElyPurple.copy(alpha = 0.3f), RoundedCornerShape(6.dp))
-                .padding(10.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "CANONICAL LYRIC SPECIMEN (IMMUTABLE TEXT WITNESS)",
-                    fontSize = 8.5.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace,
-                    color = ElyPurple
-                )
-                Text(
-                    text = "LOCKED 🔒",
-                    fontSize = 8.sp,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold,
-                    color = ElyG3Axiom
-                )
-            }
-            Spacer(modifier = Modifier.height(6.dp))
-
-            // Specimen Text Content (Clear, Large, Monospace)
-            Text(
-                text = selectedVersion.lyricText,
-                fontSize = 12.sp,
-                fontFamily = FontFamily.Monospace,
-                color = ElyTextPrimary,
-                lineHeight = 17.sp
-            )
-        }
-
-        // Witness Trustworthiness & Origin Stamp
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(
-                text = "SHA-256: ${selectedVersion.sha256Hash}",
-                fontSize = 7.5.sp,
-                fontFamily = FontFamily.Monospace,
-                color = ElyTextTertiary
-            )
-        }
-    }
-}
-
-@Composable
-private fun DesktopWitnessView(selectedVersion: SpecimenVersionNode) {
-    Row(modifier = Modifier.fillMaxSize()) {
-        // Left: Canonical Monospace Lyric Text
-        Column(
-            modifier = Modifier
-                .weight(1.2f)
-                .fillMaxHeight()
-                .padding(end = 8.dp)
-        ) {
-            Text(
-                text = "CANONICAL LYRIC SPECIMEN (IMMUTABLE TEXT WITNESS)",
+                text = "CURATOR ACTION",
                 fontSize = 9.sp,
                 fontWeight = FontWeight.Bold,
                 fontFamily = FontFamily.Monospace,
-                color = ElyPurple
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(ElyHeaderGlass.copy(alpha = 0.4f))
-                    .border(0.5.dp, ElyWindowBorderInactive, RoundedCornerShape(4.dp))
-                    .padding(8.dp)
-            ) {
-                Text(
-                    text = selectedVersion.lyricText,
-                    fontSize = 12.sp,
-                    fontFamily = FontFamily.Monospace,
-                    color = ElyTextPrimary,
-                    lineHeight = 17.sp
-                )
-            }
-        }
-
-        // Right: Witness Integrity Sidebar
-        Column(
-            modifier = Modifier
-                .weight(0.8f)
-                .fillMaxHeight()
-                .border(0.5.dp, ElyWindowBorderInactive, RoundedCornerShape(4.dp))
-                .background(ElyHeaderGlass.copy(alpha = 0.5f))
-                .padding(8.dp)
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            Text(
-                text = "WITNESS INTEGRITY",
-                fontSize = 8.5.sp,
-                fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.Monospace,
-                color = ElyPurple
-            )
-            HorizontalDivider(color = ElyWindowBorderInactive, thickness = 0.5.dp)
-
-            CuratorialMetric("Text Witness", "VERIFIED (Intact)", ElyG3Axiom)
-            val audio = selectedVersion.audioWitness
-            if (audio != null && audio.isMeasured) {
-                CuratorialMetric("Audio Witness", "MEASURED (${audio.decoderStatus})", ElyG3Axiom)
-            } else {
-                CuratorialMetric("Audio Witness", "NOT MEASURED", ElyAmberWarning)
-            }
-
-            HorizontalDivider(color = ElyWindowBorderInactive, thickness = 0.5.dp)
-            Text(
-                text = "SPECIMEN METRICS",
-                fontSize = 8.sp,
-                fontFamily = FontFamily.Monospace,
-                fontWeight = FontWeight.Bold,
                 color = ElyTextSecondary
             )
-            MetricRow("Words", "${selectedVersion.wordCount}")
-            MetricRow("Sections", "${selectedVersion.sectionCount}")
-            MetricRow("Stanzas", "${selectedVersion.stanzaCount}")
-            MetricRow("Sensory Anchors", "${selectedVersion.objectCount}")
 
-            HorizontalDivider(color = ElyWindowBorderInactive, thickness = 0.5.dp)
-            Text(
-                text = "DETERMINISTIC SHA-256",
-                fontSize = 8.sp,
-                fontFamily = FontFamily.Monospace,
-                color = ElyTextSecondary
-            )
-            Text(
-                text = selectedVersion.sha256Hash,
-                fontSize = 7.sp,
-                fontFamily = FontFamily.Monospace,
-                color = ElyG3Axiom
-            )
-        }
-    }
-}
-
-// ==============================================================================
-// 2. EXAMINATION SECTION VIEWS
-// ==============================================================================
-@Composable
-private fun ExaminationSectionView(selectedVersion: SpecimenVersionNode) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(6.dp))
-            .background(ElySurfaceCard)
-            .border(0.5.dp, ElyWindowBorderInactive, RoundedCornerShape(6.dp))
-            .padding(10.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        Text(
-            text = "FORENSIC EXAMINATION SCOPE & DOMAINS",
-            fontSize = 9.5.sp,
-            fontWeight = FontWeight.Bold,
-            fontFamily = FontFamily.Monospace,
-            color = ElyPurple
-        )
-        Text(
-            text = "Forensic scope establishes what evidence was physically examined vs. what remains unmeasured.",
-            fontSize = 8.5.sp,
-            color = ElyTextSecondary
-        )
-        HorizontalDivider(color = ElyWindowBorderInactive, thickness = 0.5.dp)
-
-        // Domain 1: Text & Linguistic Witness Domain
-        ExaminationDomainCard(
-            domainName = "1. Text & Linguistic Witness Domain",
-            statusLabel = "EXAMINED",
-            statusColor = ElyG3Axiom,
-            details = listOf(
-                "Examined: Frozen 8-field evidence schema & semantic payload",
-                "Examined: Physical sensory anchor presence (tactile grounding)",
-                "Examined: Prohibited algorithmic cliché and trope screening",
-                "Examined: Metric structure, stanzas (${selectedVersion.stanzaCount}), words (${selectedVersion.wordCount})"
-            )
-        )
-
-        // Domain 2: Audio & Vocal Performance Domain
-        val audio = selectedVersion.audioWitness
-        if (audio != null && audio.isMeasured) {
-            ExaminationDomainCard(
-                domainName = "2. Audio & Vocal Performance Domain",
-                statusLabel = "EXAMINED",
-                statusColor = ElyG3Axiom,
-                details = listOf(
-                    "Examined: Decoder stream integrity (${audio.decoderStatus})",
-                    "Examined: PCM transient structure (${audio.transientStatus})",
-                    "Examined: Peak level (${audio.peakDb} dB) & sample rate (${audio.sampleRateKhz} kHz)"
-                )
-            )
-        } else {
-            ExaminationDomainCard(
-                domainName = "2. Audio & Vocal Performance Domain",
-                statusLabel = "NOT MEASURED",
-                statusColor = ElyAmberWarning,
-                details = listOf(
-                    "Status: Physical audio/vocal evidence unavailable",
-                    "Rule: Vocal naturalness, formant stability, tempo/pitch constraints are NOT MEASURED",
-                    "Note: No synthetic or default values generated. Awaiting audio render."
-                )
-            )
-        }
-
-        // Domain 3: Acoustic Environment & Spatial Morphology Domain
-        if (audio != null && audio.isMeasured) {
-            ExaminationDomainCard(
-                domainName = "3. Acoustic Environment & Spatial Morphology Domain",
-                statusLabel = "EXAMINED / INFORMATIONAL",
-                statusColor = ElyCyan,
-                details = listOf(
-                    "Status: Non-blocking acoustic observation recorded",
-                    "Space: Class A Dry Space profile observed",
-                    "Rule: Zero arbitrary numeric T60 blocking thresholds applied"
-                )
-            )
-        } else {
-            ExaminationDomainCard(
-                domainName = "3. Acoustic Environment & Spatial Morphology Domain",
-                statusLabel = "NOT MEASURED",
-                statusColor = ElyTextTertiary,
-                details = listOf(
-                    "Status: Physical acoustic evidence unavailable",
-                    "Rule: Reverb decay, T60, and acoustic morphology are NOT MEASURED",
-                    "Note: Qualitative acoustic observations are not fabricated from lyric text."
-                )
-            )
-        }
-
-        // Domain 4: Human Governance Authority Domain
-        ExaminationDomainCard(
-            domainName = "4. Human Governance Authority Domain",
-            statusLabel = "AWAITING HUMAN GOVERNOR",
-            statusColor = ElyPurple,
-            details = listOf(
-                "Protocol: 3.2.1.0 (Listen → Evaluate → Decide → Freeze)",
-                "AI Automation: Disabled (Zero algorithmic automated approvals)",
-                "Authority: Final disposition reserved exclusively for Human Governor"
-            )
-        )
-    }
-}
-
-// ==============================================================================
-// 3. FINDINGS SECTION VIEWS
-// ==============================================================================
-@Composable
-private fun FindingsSectionView(selectedVersion: SpecimenVersionNode) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(6.dp))
-            .background(ElySurfaceCard)
-            .border(0.5.dp, ElyWindowBorderInactive, RoundedCornerShape(6.dp))
-            .padding(10.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        Text(
-            text = "FORENSIC FINDINGS & EVIDENCE SUMMARY",
-            fontSize = 9.5.sp,
-            fontWeight = FontWeight.Bold,
-            fontFamily = FontFamily.Monospace,
-            color = ElyPurple
-        )
-        HorizontalDivider(color = ElyWindowBorderInactive, thickness = 0.5.dp)
-
-        // Finding 1: Physical Sensory Anchors
-        val diag = selectedVersion.g2Diagnostic
-        val anchorCount = diag?.physicalAnchorCount ?: selectedVersion.objectCount
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(4.dp))
-                .background(ElyHeaderGlass)
-                .border(0.5.dp, ElyWindowBorderInactive, RoundedCornerShape(4.dp))
-                .padding(8.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "1. PHYSICAL SENSORY ANCHORS",
-                    fontSize = 9.sp,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold,
-                    color = ElyG3Axiom
-                )
-                Text(
-                    text = "$anchorCount Anchors Found",
-                    fontSize = 8.5.sp,
-                    fontFamily = FontFamily.Monospace,
-                    color = ElyG3Axiom
-                )
-            }
-            Spacer(modifier = Modifier.height(4.dp))
-            val anchors = selectedVersion.evidence.witnessObjects.ifEmpty {
-                listOf("coat", "coin", "table", "photograph", "railway")
-            }
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                items(anchors) { anchor ->
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(3.dp))
-                            .background(ElyG3Axiom.copy(alpha = 0.15f))
-                            .border(0.5.dp, ElyG3Axiom.copy(alpha = 0.4f), RoundedCornerShape(3.dp))
-                            .padding(horizontal = 6.dp, vertical = 3.dp)
+            when (decision) {
+                SpecimenDecision.ACCEPT -> {
+                    // 🟢 ACCEPTABLE WORKFLOW
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text(text = "⚓ $anchor", fontSize = 8.5.sp, color = ElyG3Axiom, fontFamily = FontFamily.Monospace)
+                        // Highlighted ACCEPT Button
+                        Button(
+                            onClick = onAccept,
+                            colors = ButtonDefaults.buttonColors(containerColor = ElyG3Axiom),
+                            shape = RoundedCornerShape(6.dp),
+                            modifier = Modifier
+                                .weight(1.5f)
+                                .height(44.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text("🟢", fontSize = 14.sp)
+                                Text(
+                                    text = "ACCEPT & ARCHIVE",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = Color.Black
+                                )
+                            }
+                        }
+
+                        // Copy Lyric Button
+                        Button(
+                            onClick = { onCopyLyric(lyricText) },
+                            colors = ButtonDefaults.buttonColors(containerColor = ElyHeaderGlass),
+                            border = BorderStroke(0.5.dp, ElyPurple.copy(alpha = 0.5f)),
+                            shape = RoundedCornerShape(6.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(44.dp)
+                        ) {
+                            Text(
+                                text = "📋 Copy Lyric",
+                                fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace,
+                                color = ElyTextPrimary
+                            )
+                        }
+                    }
+                }
+
+                SpecimenDecision.NEEDS_HEALING -> {
+                    // 🟡 REQUIRES CURATION WORKFLOW
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        // Highlighted CURATE Button (Opens App 01 with lyric and brief automatically transferred)
+                        Button(
+                            onClick = onCurateInEngine,
+                            colors = ButtonDefaults.buttonColors(containerColor = ElyAmberWarning),
+                            shape = RoundedCornerShape(6.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(44.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text("✨", fontSize = 14.sp)
+                                Text(
+                                    text = "CURATE IN APP 01 (LYRIC GENERATOR)",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = Color.Black
+                                )
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                    contentDescription = null,
+                                    tint = Color.Black,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+
+                        // Secondary action row (Manual copy fallback / Force Accept / Reject)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Button(
+                                onClick = { onCopyLyric(lyricText) },
+                                colors = ButtonDefaults.buttonColors(containerColor = ElyHeaderGlass),
+                                border = BorderStroke(0.5.dp, ElyWindowBorderInactive),
+                                shape = RoundedCornerShape(4.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(34.dp)
+                            ) {
+                                Text("📋 Copy Lyric", fontSize = 9.5.sp, color = ElyTextPrimary)
+                            }
+
+                            Button(
+                                onClick = onAccept,
+                                colors = ButtonDefaults.buttonColors(containerColor = ElyHeaderGlass),
+                                border = BorderStroke(0.5.dp, ElyG3Axiom.copy(alpha = 0.5f)),
+                                shape = RoundedCornerShape(4.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(34.dp)
+                            ) {
+                                Text("Accept As-Is", fontSize = 9.5.sp, color = ElyG3Axiom)
+                            }
+
+                            Button(
+                                onClick = onReject,
+                                colors = ButtonDefaults.buttonColors(containerColor = ElyHeaderGlass),
+                                border = BorderStroke(0.5.dp, ElyError.copy(alpha = 0.5f)),
+                                shape = RoundedCornerShape(4.dp),
+                                modifier = Modifier
+                                    .weight(0.8f)
+                                    .height(34.dp)
+                            ) {
+                                Text("Reject", fontSize = 9.5.sp, color = ElyError)
+                            }
+                        }
+                    }
+                }
+
+                SpecimenDecision.NOT_ELIGIBLE -> {
+                    // 🔴 REJECT WORKFLOW
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = onReject,
+                            colors = ButtonDefaults.buttonColors(containerColor = ElyError),
+                            shape = RoundedCornerShape(6.dp),
+                            modifier = Modifier
+                                .weight(1.5f)
+                                .height(44.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text("🔴", fontSize = 14.sp)
+                                Text(
+                                    text = "COMMIT REJECTION",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = Color.White
+                                )
+                            }
+                        }
+
+                        Button(
+                            onClick = { onCopyLyric(lyricText) },
+                            colors = ButtonDefaults.buttonColors(containerColor = ElyHeaderGlass),
+                            border = BorderStroke(0.5.dp, ElyWindowBorderInactive),
+                            shape = RoundedCornerShape(6.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(44.dp)
+                        ) {
+                            Text("📋 Copy Raw Text", fontSize = 10.sp, color = ElyTextPrimary)
+                        }
+                    }
+                }
+
+                SpecimenDecision.NOT_YET_EXAMINED -> {
+                    Button(
+                        onClick = onCurateInEngine,
+                        colors = ButtonDefaults.buttonColors(containerColor = ElyPurple),
+                        shape = RoundedCornerShape(6.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp)
+                    ) {
+                        Text("Examine Specimen", color = Color.White, fontWeight = FontWeight.Bold)
                     }
                 }
             }
         }
-
-        // Finding 2: Trope & Cliché Screen
-        val clicheCount = diag?.prohibitedLexiconCount ?: 0
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(4.dp))
-                .background(ElyHeaderGlass)
-                .border(0.5.dp, ElyWindowBorderInactive, RoundedCornerShape(4.dp))
-                .padding(8.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "2. PROHIBITED TROPE & CLICHÉ SCREEN",
-                    fontSize = 9.sp,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold,
-                    color = if (clicheCount == 0) ElyG3Axiom else ElyError
-                )
-                Text(
-                    text = if (clicheCount == 0) "0 Clichés Detected (Clean)" else "$clicheCount Clichés Found",
-                    fontSize = 8.5.sp,
-                    fontFamily = FontFamily.Monospace,
-                    color = if (clicheCount == 0) ElyG3Axiom else ElyError
-                )
-            }
-        }
-
-        // Finding 3: Frozen 8-Field Evidence Schema
-        val evid = selectedVersion.evidence
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(4.dp))
-                .background(ElyHeaderGlass)
-                .border(0.5.dp, ElyWindowBorderInactive, RoundedCornerShape(4.dp))
-                .padding(8.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            Text(
-                text = "3. CORE EVIDENCE SCHEMA (8-FIELD CONTRACT)",
-                fontSize = 9.sp,
-                fontFamily = FontFamily.Monospace,
-                fontWeight = FontWeight.Bold,
-                color = ElyPurple
-            )
-            EvidenceField("Theme", evid.theme)
-            EvidenceField("Narrative Arc", evid.narrativeArc)
-            EvidenceField("Emotional Profile", evid.emotionalProfile)
-            EvidenceField("Temporal Context", evid.temporalContext)
-            EvidenceField("Energy Profile", evid.energyProfile)
-            EvidenceField("Language Characteristics", evid.languageCharacteristics)
-        }
-
-        // Finding 4: Audio / Physical Evidence
-        val audio = selectedVersion.audioWitness
-        if (audio != null && audio.isMeasured) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(ElyHeaderGlass)
-                    .border(0.5.dp, ElyG3Axiom.copy(alpha = 0.3f), RoundedCornerShape(4.dp))
-                .padding(8.dp),
-                verticalArrangement = Arrangement.spacedBy(3.dp)
-            ) {
-                Text(
-                    text = "4. AUDIO WITNESS FINDINGS (MEASURED)",
-                    fontSize = 9.sp,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold,
-                    color = ElyG3Axiom
-                )
-                AudioMetricRow("Decoder Health", audio.decoderStatus, ElyG3Axiom)
-                AudioMetricRow("Duration", audio.durationFormatted, ElyTextPrimary)
-                AudioMetricRow("Sample Rate", "${audio.sampleRateKhz} kHz", ElyTextPrimary)
-                AudioMetricRow("Peak Level", "${audio.peakDb} dB", ElyG3Axiom)
-            }
-        } else {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(ElyHeaderGlass)
-                    .border(0.5.dp, ElyWindowBorderInactive, RoundedCornerShape(4.dp))
-                    .padding(8.dp)
-            ) {
-                Text(
-                    text = "4. AUDIO & VOCAL FINDINGS: NOT MEASURED",
-                    fontSize = 9.sp,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold,
-                    color = ElyAmberWarning
-                )
-                Text(
-                    text = "No physical audio payload attached to this specimen. Vocal naturalness, formant stability, and acoustic room decay remain unmeasured pending audio render.",
-                    fontSize = 8.5.sp,
-                    color = ElyTextTertiary
-                )
-            }
-        }
     }
 }
 
-// ==============================================================================
-// 4B. DEDICATED FORENSIC LISTENING LAYER (HUMAN EAR REVIEW)
-// ==============================================================================
+// =============================================================================
+// 4. FORENSIC DETAILS & TECHNICAL AUDIT (Secondary Collapsible Area)
+// =============================================================================
 @Composable
-private fun HumanEarReviewSectionView(
-    baseComposition: BaseComposition?,
-    selectedVersion: SpecimenVersionNode?,
-    onCommitHumanEarDisposition: (String, String, HumanEarDisposition, String) -> Unit,
-    onUpdateHumanEarReview: (String, String, HumanEarReview) -> Unit
+private fun ForensicTechnicalAuditCollapsible(
+    version: SpecimenVersion,
+    isExpanded: Boolean,
+    onToggle: () -> Unit
 ) {
-    if (selectedVersion == null || baseComposition == null) {
-        Box(
-            modifier = Modifier.fillMaxSize().padding(16.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Text("Select a verified specimen to initiate Human Ear Review", color = ElyTextSecondary, fontSize = 11.sp)
-        }
-        return
-    }
-
-    val currentReview = selectedVersion.humanEarReview ?: HumanEarReview()
-    var awkwardWording by remember(selectedVersion.versionId, selectedVersion.humanEarReview) {
-        mutableStateOf(selectedVersion.humanEarReview?.hasAwkwardWording ?: false)
-    }
-    var foreignInjection by remember(selectedVersion.versionId, selectedVersion.humanEarReview) {
-        mutableStateOf(selectedVersion.humanEarReview?.hasForeignLanguageInjection ?: false)
-    }
-    var pronunciationAnomalies by remember(selectedVersion.versionId, selectedVersion.humanEarReview) {
-        mutableStateOf(selectedVersion.humanEarReview?.hasPronunciationAnomalies ?: false)
-    }
-    var lyricMismatch by remember(selectedVersion.versionId, selectedVersion.humanEarReview) {
-        mutableStateOf(selectedVersion.humanEarReview?.hasLyricAudioMismatch ?: false)
-    }
-    var unnaturalPhrasing by remember(selectedVersion.versionId, selectedVersion.humanEarReview) {
-        mutableStateOf(selectedVersion.humanEarReview?.hasUnnaturalSungPhrasing ?: false)
-    }
-    var performanceAnomalies by remember(selectedVersion.versionId, selectedVersion.humanEarReview) {
-        mutableStateOf(selectedVersion.humanEarReview?.hasPerformanceAnomaly ?: false)
-    }
-    var curatorNotes by remember(selectedVersion.versionId, selectedVersion.humanEarReview) {
-        mutableStateOf(selectedVersion.humanEarReview?.curatorNotes ?: "")
-    }
-
-    val audioWitness = selectedVersion.audioWitness
-    val isAudioMeasured = audioWitness != null && audioWitness.isMeasured
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = ElyHeaderGlass,
+        border = BorderStroke(0.5.dp, ElyWindowBorderInactive),
+        modifier = Modifier.fillMaxWidth()
     ) {
-        // 1. FORENSIC WORKFLOW BANNER (INGEST → VERIFY → MEASURE → HUMAN EAR REVIEW → DISPOSITION)
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(6.dp))
-                .background(Color(0xFF141923))
-                .border(1.dp, ElyPurple.copy(alpha = 0.5f), RoundedCornerShape(6.dp))
-                .padding(8.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
+                .padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onToggle() },
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -1804,204 +1298,154 @@ private fun HumanEarReviewSectionView(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
+                    Text("🔍", fontSize = 12.sp)
                     Text(
-                        text = "🎧 FORENSIC LISTENING LAYER",
-                        fontSize = 11.sp,
-                        fontFamily = FontFamily.Monospace,
+                        text = "Forensic Details & Technical Audit (G1–G6)",
+                        fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace,
                         color = ElyPurple
                     )
                 }
-                Box(
+                Text(
+                    text = if (isExpanded) "▲ Collapse" else "▼ Expand Details",
+                    fontSize = 9.sp,
+                    fontFamily = FontFamily.Monospace,
+                    color = ElyTextSecondary
+                )
+            }
+
+            AnimatedVisibility(visible = isExpanded) {
+                Column(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(3.dp))
-                        .background(Color(currentReview.disposition.badgeColor).copy(alpha = 0.2f))
-                        .border(0.5.dp, Color(currentReview.disposition.badgeColor), RoundedCornerShape(3.dp))
-                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                        .fillMaxWidth()
+                        .padding(top = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    HorizontalDivider(color = ElyWindowBorderInactive, thickness = 0.5.dp)
+
+                    // Witness Objects & Theme
+                    Surface(
+                        shape = RoundedCornerShape(4.dp),
+                        color = ElyBackground,
+                        border = BorderStroke(0.5.dp, ElyWindowBorderInactive),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = "THEME: ${version.evidence.theme}",
+                                fontSize = 9.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = ElyTextPrimary
+                            )
+                            if (version.evidence.witnessObjects.isNotEmpty()) {
+                                Text(
+                                    text = "Witness Anchors: ${version.evidence.witnessObjects.joinToString(", ")}",
+                                    fontSize = 9.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = ElyG3Axiom
+                                )
+                            }
+                            Text(
+                                text = "Narrative: ${version.evidence.narrativeArc}",
+                                fontSize = 8.5.sp,
+                                color = ElyTextSecondary
+                            )
+                        }
+                    }
+
+                    // G1–G6 Diagnostic Gates
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        version.gates.forEach { gate ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(ElyBackground)
+                                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text(
+                                        text = "${gate.gateId} [${gate.name}]",
+                                        fontSize = 8.5.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.Bold,
+                                        color = ElyPurple
+                                    )
+                                    Text(
+                                        text = gate.summary,
+                                        fontSize = 8.sp,
+                                        color = ElyTextSecondary,
+                                        maxLines = 1
+                                    )
+                                }
+                                val (gateBadge, gateColor) = when (gate.status) {
+                                    GateStatus.PASS -> "PASS" to ElyG3Axiom
+                                    GateStatus.FLAGGED -> "FLAGGED" to ElyAmberWarning
+                                    GateStatus.CURE_RECOMMENDED -> "CURE" to ElyAmberWarning
+                                    GateStatus.FAIL -> "FAIL" to ElyError
+                                    GateStatus.UNEXAMINED -> "UNEXAMINED" to ElyTextTertiary
+                                }
+                                Text(
+                                    text = gateBadge,
+                                    fontSize = 8.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = gateColor
+                                )
+                            }
+                        }
+                    }
+
+                    // SHA-256 Hash
                     Text(
-                        text = currentReview.disposition.label,
+                        text = "EVIDENCE HASH: ${version.sha256Hash}",
                         fontSize = 8.sp,
                         fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(currentReview.disposition.badgeColor)
+                        color = ElyTextTertiary
                     )
                 }
             }
+        }
+    }
+}
 
-            Text(
-                text = "Machine proves the artifact. The player lets the human hear the artifact. The curator decides.",
-                fontSize = 9.sp,
-                color = ElyTextSecondary
-            )
-
-            // Workflow Pipeline Track: INGEST → VERIFY → MEASURE → HUMAN EAR REVIEW → DISPOSITION
-            Row(
+// =============================================================================
+// 5. LYRIC DUMPING ARCHIVE VIEW (Accepted Canonical Lyrics)
+// =============================================================================
+@Composable
+private fun LyricDumpingArchiveView(
+    acceptedLyrics: List<ArchiveFile>,
+    onCopyLyric: (String, String) -> Unit,
+    onRequestDelete: (ArchiveFile) -> Unit,
+    onSwitchToExamination: () -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        // Section Header
+        Surface(
+            shape = RoundedCornerShape(8.dp),
+            color = ElySurfaceCard,
+            border = BorderStroke(0.5.dp, ElyWindowBorderInactive),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(Color(0xFF0D1117))
-                    .padding(horizontal = 6.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                WorkflowStepChip("INGEST", true)
-                Text("→", fontSize = 8.sp, color = ElyTextTertiary)
-                WorkflowStepChip("VERIFY", true)
-                Text("→", fontSize = 8.sp, color = ElyTextTertiary)
-                WorkflowStepChip("MEASURE", isAudioMeasured)
-                Text("→", fontSize = 8.sp, color = ElyTextTertiary)
-                WorkflowStepChip("HUMAN EAR REVIEW", true, isCurrent = true)
-                Text("→", fontSize = 8.sp, color = ElyTextTertiary)
-                WorkflowStepChip("DISPOSITION", currentReview.disposition != HumanEarDisposition.PENDING_REVIEW)
-            }
-
-            // Invariant chips
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                ForensicInvariantPill("SOURCE READ-ONLY", ElyG3Axiom)
-                ForensicInvariantPill("SHA-256 IMMUTABLE", ElyG3Axiom)
-                ForensicInvariantPill(if (isAudioMeasured) "PCM VERIFIED" else "AUDIO NOT_MEASURED", if (isAudioMeasured) ElyG3Axiom else ElyAmberWarning)
-                ForensicInvariantPill("G1/G2 PRESERVED", ElyG3Axiom)
-            }
-        }
-
-        // 2. THE WINAMP-STYLE FORENSIC WITNESS PLAYER DECK
-        ForensicWitnessPlayerDeck(
-            specimen = selectedVersion,
-            songTitle = baseComposition.title,
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        // 3. CURATOR AUDITORY DEFECT SCREENING CHECKLIST & LYRICS REFERENCE
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            // Left Column: 6 Auditory Defect Screening Checklist
-            Column(
-                modifier = Modifier
-                    .weight(1.1f)
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(ElyHeaderGlass)
-                    .border(0.5.dp, ElyWindowBorderInactive, RoundedCornerShape(6.dp))
-                    .padding(8.dp),
-                verticalArrangement = Arrangement.spacedBy(5.dp)
-            ) {
-                Text(
-                    text = "AUDITORY WITNESS SCREENING",
-                    fontSize = 9.sp,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold,
-                    color = ElyTextPrimary
-                )
-                Text(
-                    text = "Listen specifically for linguistic & musical delivery defects:",
-                    fontSize = 8.sp,
-                    color = ElyTextSecondary
-                )
-
-                AuditoryChecklistItem(
-                    title = "Awkward / Unnatural wording",
-                    subtitle = "Phrases that sound unnatural or grammatically distorted when sung",
-                    isChecked = awkwardWording,
-                    onToggle = {
-                        val updated = !awkwardWording
-                        awkwardWording = updated
-                        onUpdateHumanEarReview(
-                            baseComposition.id,
-                            selectedVersion.versionId,
-                            currentReview.copy(hasAwkwardWording = updated)
-                        )
-                    }
-                )
-
-                AuditoryChecklistItem(
-                    title = "Unexpected foreign-language injection",
-                    subtitle = "Unintentional foreign words or phonetic garble injected into vocal stream",
-                    isChecked = foreignInjection,
-                    onToggle = {
-                        val updated = !foreignInjection
-                        foreignInjection = updated
-                        onUpdateHumanEarReview(
-                            baseComposition.id,
-                            selectedVersion.versionId,
-                            currentReview.copy(hasForeignLanguageInjection = updated)
-                        )
-                    }
-                )
-
-                AuditoryChecklistItem(
-                    title = "Pronunciation anomalies",
-                    subtitle = "Mispronounced syllables, artificial vowels, or robotic cadence",
-                    isChecked = pronunciationAnomalies,
-                    onToggle = {
-                        val updated = !pronunciationAnomalies
-                        pronunciationAnomalies = updated
-                        onUpdateHumanEarReview(
-                            baseComposition.id,
-                            selectedVersion.versionId,
-                            currentReview.copy(hasPronunciationAnomalies = updated)
-                        )
-                    }
-                )
-
-                AuditoryChecklistItem(
-                    title = "Lyric / Audio mismatch",
-                    subtitle = "Vocalist sings words that diverge from canonical lyric text witness",
-                    isChecked = lyricMismatch,
-                    onToggle = {
-                        val updated = !lyricMismatch
-                        lyricMismatch = updated
-                        onUpdateHumanEarReview(
-                            baseComposition.id,
-                            selectedVersion.versionId,
-                            currentReview.copy(hasLyricAudioMismatch = updated)
-                        )
-                    }
-                )
-
-                AuditoryChecklistItem(
-                    title = "Unnatural sung phrasing",
-                    subtitle = "Awkward breath placement, rushed meter, or dissonant melody line",
-                    isChecked = unnaturalPhrasing,
-                    onToggle = {
-                        val updated = !unnaturalPhrasing
-                        unnaturalPhrasing = updated
-                        onUpdateHumanEarReview(
-                            baseComposition.id,
-                            selectedVersion.versionId,
-                            currentReview.copy(hasUnnaturalSungPhrasing = updated)
-                        )
-                    }
-                )
-
-                AuditoryChecklistItem(
-                    title = "Performance defect despite gates",
-                    subtitle = "Subjective human-ear unacceptability despite automated verification passing",
-                    isChecked = performanceAnomalies,
-                    onToggle = {
-                        val updated = !performanceAnomalies
-                        performanceAnomalies = updated
-                        onUpdateHumanEarReview(
-                            baseComposition.id,
-                            selectedVersion.versionId,
-                            currentReview.copy(hasPerformanceAnomaly = updated)
-                        )
-                    }
-                )
-            }
-
-            // Right Column: Canonical Lyric Witness Reference
-            Column(
-                modifier = Modifier
-                    .weight(0.9f)
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(ElyHeaderGlass)
-                    .border(0.5.dp, ElyWindowBorderInactive, RoundedCornerShape(6.dp))
-                    .padding(8.dp),
+                    .padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Row(
@@ -2009,748 +1453,230 @@ private fun HumanEarReviewSectionView(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "CANONICAL LYRIC WITNESS",
-                        fontSize = 9.sp,
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold,
-                        color = ElyG3Axiom
-                    )
-                    Text(
-                        text = "${selectedVersion.wordCount} words",
-                        fontSize = 7.5.sp,
-                        fontFamily = FontFamily.Monospace,
-                        color = ElyTextTertiary
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text("📦", fontSize = 16.sp)
+                        Text(
+                            text = "LYRIC DUMPING // ACCEPTED ARCHIVE",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
+                            color = ElyG3Axiom
+                        )
+                    }
+
+                    Surface(
+                        color = ElyG3Axiom.copy(alpha = 0.15f),
+                        shape = RoundedCornerShape(4.dp)
+                    ) {
+                        Text(
+                            text = "${acceptedLyrics.size} ACCEPTED",
+                            fontSize = 9.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold,
+                            color = ElyG3Axiom,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
                 }
 
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 240.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(Color(0xFF0E121A))
-                        .padding(6.dp)
-                        .verticalScroll(rememberScrollState())
+                Text(
+                    text = "Archive of specimens accepted by Human Governor. Copy onward to Suno or your Diary, and delete when finished.",
+                    fontSize = 10.sp,
+                    color = ElyTextSecondary
+                )
+            }
+        }
+
+        if (acceptedLyrics.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = selectedVersion.lyricText,
-                        fontSize = 8.5.sp,
-                        fontFamily = FontFamily.Monospace,
-                        color = ElyTextPrimary,
-                        lineHeight = 13.sp
+                        text = "No Accepted Lyrics in Archive",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = ElyTextSecondary
+                    )
+                    Text(
+                        text = "Examine and accept specimens in the Examination tab to populate this dumping archive.",
+                        fontSize = 10.5.sp,
+                        color = ElyTextTertiary,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.widthIn(max = 280.dp)
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Button(
+                        onClick = onSwitchToExamination,
+                        colors = ButtonDefaults.buttonColors(containerColor = ElyPurple),
+                        shape = RoundedCornerShape(6.dp)
+                    ) {
+                        Text("Go to Specimen Examination", fontSize = 11.sp, color = Color.White)
+                    }
+                }
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(acceptedLyrics, key = { it.id }) { file ->
+                    ArchivedLyricItemCard(
+                        file = file,
+                        onCopy = { onCopyLyric(file.fullText, file.fileName) },
+                        onDelete = { onRequestDelete(file) }
                     )
                 }
             }
         }
+    }
+}
 
-        // 4. CURATOR EAR OBSERVATIONS & QUALITATIVE NOTES
+// =============================================================================
+// ARCHIVED LYRIC ITEM CARD (With Copy for Suno/Diary & Delete with confirmation)
+// =============================================================================
+@Composable
+private fun ArchivedLyricItemCard(
+    file: ArchiveFile,
+    onCopy: () -> Unit,
+    onDelete: () -> Unit
+) {
+    var isExpanded by remember { mutableStateOf(false) }
+
+    Surface(
+        shape = RoundedCornerShape(6.dp),
+        color = ElySurfaceCard,
+        border = BorderStroke(0.5.dp, ElyWindowBorderInactive),
+        modifier = Modifier.fillMaxWidth()
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(6.dp))
-                .background(ElySurfaceCard)
-                .border(0.5.dp, ElyWindowBorderInactive, RoundedCornerShape(6.dp))
-                .padding(8.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text(
-                text = "CURATOR QUALITATIVE EAR OBSERVATIONS",
-                fontSize = 8.5.sp,
-                fontFamily = FontFamily.Monospace,
-                fontWeight = FontWeight.Bold,
-                color = ElyTextSecondary
-            )
-            OutlinedTextField(
-                value = curatorNotes,
-                onValueChange = {
-                    curatorNotes = it
-                    onUpdateHumanEarReview(
-                        baseComposition.id,
-                        selectedVersion.versionId,
-                        currentReview.copy(curatorNotes = it)
-                    )
-                },
-                placeholder = {
-                    Text(
-                        "Record auditory observations (e.g., phrasing naturalness, vocal clarity, timbre stability)...",
-                        fontSize = 8.5.sp,
-                        color = ElyTextTertiary
-                    )
-                },
-                modifier = Modifier.fillMaxWidth().height(64.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = ElyPurple,
-                    unfocusedBorderColor = ElyWindowBorderInactive,
-                    focusedTextColor = ElyTextPrimary,
-                    unfocusedTextColor = ElyTextPrimary
-                ),
-                textStyle = LocalTextStyle.current.copy(fontSize = 8.5.sp, fontFamily = FontFamily.Monospace)
-            )
-        }
-
-        // 5. HUMAN EAR DISPOSITION ASSIGNMENT ACTION BAR (KEEP / CURE / REJECT / FREEZE)
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(6.dp))
-                .background(Color(0xFF161A22))
-                .border(1.dp, ElyPurple.copy(alpha = 0.4f), RoundedCornerShape(6.dp))
-                .padding(8.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
+            // Header Row
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "ASSIGN HUMAN EAR DISPOSITION",
-                    fontSize = 9.sp,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold,
-                    color = ElyTextPrimary
-                )
-                Text(
-                    text = "Human Listening Witness Record",
-                    fontSize = 7.5.sp,
-                    fontFamily = FontFamily.Monospace,
-                    color = ElyTextTertiary
-                )
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                // 1. KEEP
-                Button(
-                    onClick = {
-                        onCommitHumanEarDisposition(
-                            baseComposition.id,
-                            selectedVersion.versionId,
-                            HumanEarDisposition.KEEP,
-                            curatorNotes
-                        )
-                    },
-                    modifier = Modifier.weight(1f).height(36.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00783E)),
-                    shape = RoundedCornerShape(4.dp)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.weight(1f)
                 ) {
-                    Text("🟢 KEEP", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                }
-
-                // 2. CURE
-                Button(
-                    onClick = {
-                        onCommitHumanEarDisposition(
-                            baseComposition.id,
-                            selectedVersion.versionId,
-                            HumanEarDisposition.CURE,
-                            curatorNotes
-                        )
-                    },
-                    modifier = Modifier.weight(1f).height(36.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF996600)),
-                    shape = RoundedCornerShape(4.dp)
-                ) {
-                    Text("🟡 CURE", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                }
-
-                // 3. REJECT
-                Button(
-                    onClick = {
-                        onCommitHumanEarDisposition(
-                            baseComposition.id,
-                            selectedVersion.versionId,
-                            HumanEarDisposition.REJECT,
-                            curatorNotes
-                        )
-                    },
-                    modifier = Modifier.weight(1f).height(36.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8B1A1A)),
-                    shape = RoundedCornerShape(4.dp)
-                ) {
-                    Text("🔴 REJECT", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                }
-
-                // 4. FREEZE
-                Button(
-                    onClick = {
-                        onCommitHumanEarDisposition(
-                            baseComposition.id,
-                            selectedVersion.versionId,
-                            HumanEarDisposition.FREEZE,
-                            curatorNotes
-                        )
-                    },
-                    modifier = Modifier.weight(1f).height(36.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF005E7A)),
-                    shape = RoundedCornerShape(4.dp)
-                ) {
-                    Text("🔵 FREEZE", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun WorkflowStepChip(label: String, isComplete: Boolean, isCurrent: Boolean = false) {
-    val (bg, border, color) = when {
-        isCurrent -> Triple(ElyPurple.copy(alpha = 0.25f), ElyPurple, ElyPurple)
-        isComplete -> Triple(ElyG3Axiom.copy(alpha = 0.15f), ElyG3Axiom.copy(alpha = 0.6f), ElyG3Axiom)
-        else -> Triple(Color(0xFF151820), ElyWindowBorderInactive, ElyTextTertiary)
-    }
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(3.dp))
-            .background(bg)
-            .border(0.5.dp, border, RoundedCornerShape(3.dp))
-            .padding(horizontal = 4.dp, vertical = 2.dp)
-    ) {
-        Text(text = label, fontSize = 7.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, color = color)
-    }
-}
-
-@Composable
-private fun ForensicInvariantPill(text: String, color: Color) {
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(3.dp))
-            .background(color.copy(alpha = 0.12f))
-            .border(0.5.dp, color.copy(alpha = 0.4f), RoundedCornerShape(3.dp))
-            .padding(horizontal = 4.dp, vertical = 2.dp)
-    ) {
-        Text(text = text, fontSize = 6.5.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, color = color)
-    }
-}
-
-@Composable
-private fun AuditoryChecklistItem(
-    title: String,
-    subtitle: String,
-    isChecked: Boolean,
-    onToggle: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(4.dp))
-            .background(if (isChecked) ElyAmberWarning.copy(alpha = 0.12f) else Color(0xFF12151D))
-            .border(0.5.dp, if (isChecked) ElyAmberWarning.copy(alpha = 0.6f) else ElyWindowBorderInactive, RoundedCornerShape(4.dp))
-            .clickable { onToggle() }
-            .padding(horizontal = 6.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        Checkbox(
-            checked = isChecked,
-            onCheckedChange = { onToggle() },
-            modifier = Modifier.size(16.dp),
-            colors = CheckboxDefaults.colors(
-                checkedColor = ElyAmberWarning,
-                checkmarkColor = Color.Black,
-                uncheckedColor = ElyTextTertiary
-            )
-        )
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = title,
-                fontSize = 8.sp,
-                fontFamily = FontFamily.Monospace,
-                fontWeight = FontWeight.Bold,
-                color = if (isChecked) ElyAmberWarning else ElyTextPrimary
-            )
-            Text(
-                text = subtitle,
-                fontSize = 7.sp,
-                color = ElyTextTertiary,
-                maxLines = 1,
-                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-            )
-        }
-        if (isChecked) {
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(ElyAmberWarning.copy(alpha = 0.2f))
-                    .padding(horizontal = 3.dp, vertical = 1.dp)
-            ) {
-                Text("FLAGGED", fontSize = 6.5.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, color = ElyAmberWarning)
-            }
-        }
-    }
-}
-
-// ==============================================================================
-// 4. DISPOSITION SECTION VIEWS
-// ==============================================================================
-@Composable
-private fun DispositionSectionView(
-    selectedVersion: SpecimenVersionNode,
-    onPreserve: () -> Unit,
-    onAccept: () -> Unit,
-    onSendToEngine: () -> Unit,
-    onCommitHumanGovernorDisposition: (GovernanceDispositionChoice, String) -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(6.dp))
-            .background(ElySurfaceCard)
-            .border(0.5.dp, ElyWindowBorderInactive, RoundedCornerShape(6.dp))
-            .padding(10.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        Text(
-            text = "CURATORIAL DISPOSITION & GOVERNOR ACTIONS",
-            fontSize = 9.5.sp,
-            fontWeight = FontWeight.Bold,
-            fontFamily = FontFamily.Monospace,
-            color = ElyPurple
-        )
-        HorizontalDivider(color = ElyWindowBorderInactive, thickness = 0.5.dp)
-
-        // Current Specimen Decision Summary Card
-        val (decIcon, decColor, decText) = when (selectedVersion.decision) {
-            SpecimenDecision.ACCEPT -> Triple("🟢", ElyG3Axiom, "ACCEPT (SURVIVOR VAULT)")
-            SpecimenDecision.NEEDS_HEALING -> Triple("🟡", ElyAmberWarning, "NEEDS HEALING (ENGINE)")
-            SpecimenDecision.NOT_ELIGIBLE -> Triple("🔴", ElyError, "NOT ELIGIBLE (PERMANENT REJECT)")
-            SpecimenDecision.NOT_YET_EXAMINED -> Triple("⚪", ElyTextTertiary, "AWAITING HUMAN GOVERNOR REVIEW")
-        }
-
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(4.dp))
-                .background(decColor.copy(alpha = 0.08f))
-                .border(0.5.dp, decColor.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
-                .padding(8.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Text(text = decIcon, fontSize = 12.sp)
-                Text(
-                    text = decText,
-                    fontSize = 10.5.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace,
-                    color = decColor
-                )
-            }
-            Text(
-                text = selectedVersion.decisionReason,
-                fontSize = 9.5.sp,
-                color = ElyTextPrimary,
-                modifier = Modifier.padding(top = 3.dp)
-            )
-        }
-
-        // Human Governor Protocol (3.2.1.0) Action Console
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(4.dp))
-                .background(ElyHeaderGlass)
-                .border(0.5.dp, ElyPurple.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
-                .padding(8.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            Text(
-                text = "HUMAN GOVERNOR PROTOCOL (3.2.1.0: Listen → Evaluate → Decide → Freeze):",
-                fontSize = 8.5.sp,
-                fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.Monospace,
-                color = ElyAmberWarning
-            )
-            Text(
-                text = "Select an authoritative human curatorial disposition pathway for this specimen:",
-                fontSize = 8.5.sp,
-                color = ElyTextSecondary
-            )
-
-            // Responsive 2x2 Grid or Row of Buttons
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Button(
-                    onClick = { onCommitHumanGovernorDisposition(GovernanceDispositionChoice.RELEASE_ACCEPT, "Human Governor authorized release to Survivor Vault.") },
-                    colors = ButtonDefaults.buttonColors(containerColor = ElyG3Axiom),
-                    shape = RoundedCornerShape(4.dp),
-                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp),
-                    modifier = Modifier.height(38.dp).weight(1f)
-                ) {
-                    Text("🟢 Accept", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.Black)
-                }
-                Button(
-                    onClick = { onCommitHumanGovernorDisposition(GovernanceDispositionChoice.MINOR_CURE, "Human Governor authorized localized minor cure.") },
-                    colors = ButtonDefaults.buttonColors(containerColor = ElyAmberWarning),
-                    shape = RoundedCornerShape(4.dp),
-                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp),
-                    modifier = Modifier.height(38.dp).weight(1f)
-                ) {
-                    Text("🟡 Minor Cure", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.Black)
-                }
-                Button(
-                    onClick = { onCommitHumanGovernorDisposition(GovernanceDispositionChoice.FULL_RECONSTRUCTION, "Human Governor authorized full architectural reconstruction.") },
-                    colors = ButtonDefaults.buttonColors(containerColor = ElyPurple),
-                    shape = RoundedCornerShape(4.dp),
-                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp),
-                    modifier = Modifier.height(38.dp).weight(1f)
-                ) {
-                    Text("🟠 Rebuild", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                }
-                Button(
-                    onClick = { onCommitHumanGovernorDisposition(GovernanceDispositionChoice.PERMANENT_REJECT, "Human Governor committed permanent reject; witness sealed.") },
-                    colors = ButtonDefaults.buttonColors(containerColor = ElyError),
-                    shape = RoundedCornerShape(4.dp),
-                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp),
-                    modifier = Modifier.height(38.dp).weight(1f)
-                ) {
-                    Text("🔴 Reject", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                }
-            }
-        }
-
-        // Secondary Curatorial Pipeline Actions
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            Button(
-                onClick = onPreserve,
-                colors = ButtonDefaults.buttonColors(containerColor = ElyHeaderGlass),
-                shape = RoundedCornerShape(4.dp),
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                modifier = Modifier.height(32.dp).weight(1f)
-            ) {
-                Text("🔒 Preserve Witness", fontSize = 9.sp, color = ElyTextPrimary)
-            }
-
-            if (selectedVersion.decision == SpecimenDecision.ACCEPT) {
-                Button(
-                    onClick = onAccept,
-                    colors = ButtonDefaults.buttonColors(containerColor = ElyG3Axiom),
-                    shape = RoundedCornerShape(4.dp),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                    modifier = Modifier.height(32.dp).weight(1f)
-                ) {
-                    Text("Accept to Vault", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.Black)
-                }
-            }
-
-            if (selectedVersion.decision == SpecimenDecision.NEEDS_HEALING) {
-                Button(
-                    onClick = onSendToEngine,
-                    colors = ButtonDefaults.buttonColors(containerColor = ElyAmberWarning),
-                    shape = RoundedCornerShape(4.dp),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                    modifier = Modifier.height(32.dp).weight(1f)
-                ) {
-                    Text("Send to Engine", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.Black)
-                }
-            }
-        }
-    }
-}
-
-// ==============================================================================
-// 5. AUDIT & TECHNICAL DETAILS SECTION VIEWS
-// ==============================================================================
-@Composable
-private fun AuditSectionView(
-    selectedVersion: SpecimenVersionNode,
-    selectedGateDiagnostic: GateDiagnostic?,
-    onSelectGate: (GateDiagnostic?) -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(6.dp))
-            .background(ElySurfaceCard)
-            .border(0.5.dp, ElyWindowBorderInactive, RoundedCornerShape(6.dp))
-            .padding(10.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        Text(
-            text = "INTERNAL GOVERNANCE GATE RECORDS (G1–G6)",
-            fontSize = 9.5.sp,
-            fontFamily = FontFamily.Monospace,
-            fontWeight = FontWeight.Bold,
-            color = ElyTextSecondary
-        )
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(3.dp)
-        ) {
-            selectedVersion.gates.forEach { gate ->
-                val isGateSelected = selectedGateDiagnostic?.gateId == gate.gateId
-                val (gateBg, gateBorder, gateColor) = when (gate.status) {
-                    GateStatus.PASS -> Triple(ElyG3Axiom.copy(alpha = 0.15f), ElyG3Axiom, ElyG3Axiom)
-                    GateStatus.FLAGGED -> Triple(ElyAmberWarning.copy(alpha = 0.15f), ElyAmberWarning, ElyAmberWarning)
-                    GateStatus.CURE_RECOMMENDED -> Triple(ElyAmberWarning.copy(alpha = 0.2f), ElyAmberWarning, ElyAmberWarning)
-                    GateStatus.FAIL -> Triple(ElyError.copy(alpha = 0.15f), ElyError, ElyError)
-                    GateStatus.UNEXAMINED -> Triple(ElySurfaceCard, ElyWindowBorderInactive, ElyTextTertiary)
-                }
-
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(if (isGateSelected) gateBorder.copy(alpha = 0.3f) else gateBg)
-                        .border(0.5.dp, if (isGateSelected) ElyPurple else gateBorder, RoundedCornerShape(4.dp))
-                        .clickable { onSelectGate(if (isGateSelected) null else gate) }
-                        .padding(4.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        text = gate.gateId,
-                        fontSize = 8.5.sp,
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold,
-                        color = gateColor
-                    )
-                    Text(
-                        text = if (gate.status == GateStatus.UNEXAMINED) "NOT MEASURED" else gate.status.name,
-                        fontSize = 6.5.sp,
-                        fontFamily = FontFamily.Monospace,
-                        color = if (gate.status == GateStatus.UNEXAMINED) ElyTextTertiary else ElyTextPrimary,
-                        maxLines = 1
-                    )
-                }
-            }
-        }
-
-        // Selected Gate Diagnostic Drawer
-        AnimatedVisibility(visible = selectedGateDiagnostic != null) {
-            if (selectedGateDiagnostic != null) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(ElyHeaderGlass)
-                        .border(0.5.dp, ElyPurple.copy(alpha = 0.6f), RoundedCornerShape(4.dp))
-                        .padding(8.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+                    Text("📄", fontSize = 14.sp)
+                    Column {
                         Text(
-                            text = "GATE: ${selectedGateDiagnostic.gateId} (${selectedGateDiagnostic.name})",
-                            fontSize = 9.sp,
-                            fontFamily = FontFamily.Monospace,
+                            text = file.fileName,
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
-                            color = ElyPurple
+                            fontFamily = FontFamily.Monospace,
+                            color = ElyTextPrimary
                         )
                         Text(
-                            text = "Close ✕",
+                            text = "${file.originTenant} • ${file.sizeKb} KB",
                             fontSize = 8.5.sp,
-                            color = ElyTextSecondary,
-                            modifier = Modifier.clickable { onSelectGate(null) }
-                        )
-                    }
-                    Text(
-                        text = selectedGateDiagnostic.summary,
-                        fontSize = 9.sp,
-                        color = ElyTextPrimary,
-                        modifier = Modifier.padding(vertical = 3.dp)
-                    )
-                    selectedGateDiagnostic.detailedEvidence.forEach { line ->
-                        Text(
-                            text = "• $line",
-                            fontSize = 8.sp,
                             fontFamily = FontFamily.Monospace,
                             color = ElyTextSecondary
                         )
                     }
                 }
+
+                // Action Buttons
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    // Copy to Clipboard (For Suno / Diary)
+                    Button(
+                        onClick = onCopy,
+                        colors = ButtonDefaults.buttonColors(containerColor = ElyG3Axiom),
+                        shape = RoundedCornerShape(4.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                        modifier = Modifier.height(28.dp)
+                    ) {
+                        Text(
+                            text = "📋 Copy Lyric",
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
+                            color = Color.Black
+                        )
+                    }
+
+                    // Delete Button
+                    Button(
+                        onClick = onDelete,
+                        colors = ButtonDefaults.buttonColors(containerColor = ElyHeaderGlass),
+                        border = BorderStroke(0.5.dp, ElyError.copy(alpha = 0.6f)),
+                        shape = RoundedCornerShape(4.dp),
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                        modifier = Modifier.height(28.dp)
+                    ) {
+                        Text(
+                            text = "🗑️ Delete",
+                            fontSize = 9.sp,
+                            fontFamily = FontFamily.Monospace,
+                            color = ElyError
+                        )
+                    }
+                }
             }
-        }
 
-        HorizontalDivider(color = ElyWindowBorderInactive, thickness = 0.5.dp)
-
-        // Provenance & Audit History
-        Text(
-            text = "PROVENANCE & AUDIT LOGS",
-            fontSize = 9.sp,
-            fontFamily = FontFamily.Monospace,
-            fontWeight = FontWeight.Bold,
-            color = ElyTextSecondary
-        )
-
-        if (selectedVersion.historyTrail.isEmpty()) {
-            Text("No audit history entries recorded.", fontSize = 9.sp, color = ElyTextTertiary)
-        } else {
-            selectedVersion.historyTrail.forEach { entry ->
+            // Lyric Preview / Full Lyric Text
+            Surface(
+                shape = RoundedCornerShape(4.dp),
+                color = ElyBackground,
+                border = BorderStroke(0.5.dp, ElyWindowBorderInactive),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { isExpanded = !isExpanded }
+            ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(ElyHeaderGlass)
-                        .border(0.5.dp, ElyWindowBorderInactive, RoundedCornerShape(4.dp))
-                        .padding(6.dp)
+                        .padding(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(text = entry.action, fontSize = 8.5.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, color = ElyPurple)
-                        Text(text = entry.timestamp, fontSize = 7.5.sp, fontFamily = FontFamily.Monospace, color = ElyTextTertiary)
+                    SelectionContainer {
+                        Text(
+                            text = if (isExpanded) file.fullText else file.previewText.ifBlank { file.fullText.take(150) + "..." },
+                            fontSize = 10.5.sp,
+                            fontFamily = FontFamily.Monospace,
+                            color = ElyTextPrimary,
+                            lineHeight = 16.sp
+                        )
                     }
-                    Text(text = entry.detail, fontSize = 8.5.sp, color = ElyTextPrimary)
-                    Text(text = "Origin: ${entry.sourceOrigin}", fontSize = 7.5.sp, color = ElyTextSecondary)
+
+                    Text(
+                        text = if (isExpanded) "▲ Click to collapse" else "▼ Click to read full lyric",
+                        fontSize = 8.sp,
+                        fontFamily = FontFamily.Monospace,
+                        color = ElyPurple
+                    )
                 }
             }
         }
     }
 }
 
-// ==============================================================================
-// SHARED HELPER COMPOSABLES
-// ==============================================================================
-@Composable
-private fun SectionHeaderBadge(sectionNumber: String, sectionName: String, accentColor: Color) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(4.dp))
-            .background(accentColor.copy(alpha = 0.12f))
-            .border(0.5.dp, accentColor.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        Text(
-            text = sectionNumber,
-            fontSize = 9.5.sp,
-            fontWeight = FontWeight.Bold,
-            fontFamily = FontFamily.Monospace,
-            color = accentColor
-        )
-        Text(
-            text = "// $sectionName",
-            fontSize = 9.sp,
-            fontWeight = FontWeight.SemiBold,
-            fontFamily = FontFamily.Monospace,
-            color = ElyTextPrimary
-        )
-    }
-}
-
-@Composable
-private fun IngressButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(4.dp))
-            .background(ElyHeaderGlass)
-            .border(0.5.dp, ElyPurple.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
-            .clickable { onClick() }
-            .padding(vertical = 4.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(text = text, fontSize = 7.5.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, color = ElyPurple)
-    }
-}
-
-@Composable
-private fun MetricRow(label: String, value: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Text(text = label, fontSize = 8.5.sp, color = ElyTextSecondary)
-        Text(text = value, fontSize = 8.5.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, color = ElyTextPrimary)
-    }
-}
-
-@Composable
-private fun CuratorialMetric(label: String, value: String, valueColor: Color) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Text(text = label, fontSize = 8.5.sp, color = ElyTextSecondary)
-        Text(text = value, fontSize = 8.5.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, color = valueColor)
-    }
-}
-
-@Composable
-private fun AudioMetricRow(label: String, value: String, valueColor: Color) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Text(text = label, fontSize = 8.5.sp, color = ElyTextSecondary)
-        Text(text = value, fontSize = 8.5.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, color = valueColor)
-    }
-}
-
-@Composable
-private fun EvidenceField(label: String, value: String) {
-    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
-        Text(text = label.uppercase(), fontSize = 7.5.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, color = ElyPurple)
-        Text(text = value, fontSize = 9.sp, color = ElyTextPrimary)
-    }
-}
-
-@Composable
-private fun ExaminationDomainCard(
-    domainName: String,
-    statusLabel: String,
-    statusColor: Color,
-    details: List<String>
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(4.dp))
-            .background(ElyHeaderGlass)
-            .border(0.5.dp, statusColor.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
-            .padding(8.dp),
-        verticalArrangement = Arrangement.spacedBy(3.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = domainName,
-                fontSize = 9.sp,
-                fontFamily = FontFamily.Monospace,
-                fontWeight = FontWeight.Bold,
-                color = ElyTextPrimary
-            )
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(3.dp))
-                    .background(statusColor.copy(alpha = 0.15f))
-                    .border(0.5.dp, statusColor.copy(alpha = 0.5f), RoundedCornerShape(3.dp))
-                    .padding(horizontal = 5.dp, vertical = 2.dp)
-            ) {
-                Text(
-                    text = statusLabel,
-                    fontSize = 7.5.sp,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold,
-                    color = statusColor
-                )
-            }
-        }
-        details.forEach { detail ->
-            Text(
-                text = "• $detail",
-                fontSize = 8.sp,
-                color = ElyTextSecondary,
-                lineHeight = 12.sp
-            )
-        }
-    }
-}
+private data class Tuple5<A, B, C, D, E>(
+    val first: A,
+    val second: B,
+    val third: C,
+    val fourth: D,
+    val fifth: E
+)

@@ -120,15 +120,16 @@ object ElyzarethTurboEngine {
     }
 
     /**
-     * Coherence Matrix: Validates Theme ↔ Emotional Profile ↔ Style alignment.
-     * Flags contradictions (e.g. intimate acoustic heartbreak forced into thrash metal without thematic justification).
+     * CANONICAL QUALITATIVE THEME–EMOTION–STYLE COHERENCE (Binary Qualitative Evaluation)
+     * Evaluates qualitative coherence without inventing numerical scalar formulas.
+     * Invariant: Returns qualitative binary status (isHarmonized = true/false) and diagnostic explanation.
      */
-    fun evaluateThemeStyleCoherence(
+    fun evaluateQualitativeThemeStyleCoherence(
         theme: String,
         emotionalProfile: String,
         genre: String,
         stylePrompt: String
-    ): Pair<Float, String> {
+    ): Pair<Boolean, String> {
         val combined = "$theme $emotionalProfile $genre $stylePrompt".lowercase(Locale.US)
         
         val isIntimateLyrical = combined.contains("intimate") || combined.contains("whisper") ||
@@ -140,7 +141,7 @@ object ElyzarethTurboEngine {
 
         if (isIntimateLyrical && isExtremeAbrasiveStyle) {
             return Pair(
-                0.55f,
+                false,
                 "Theme–Style Coherence Review: Intimate/vulnerable lyric paired with aggressive high-gain style. Surprising pairing flagged for curatorial review."
             )
         }
@@ -149,12 +150,31 @@ object ElyzarethTurboEngine {
         val isPartyClub = genre.contains("edm", ignoreCase = true) || genre.contains("eurodance", ignoreCase = true) || stylePrompt.contains("club banger", ignoreCase = true)
         if (isSolemnSacred && isPartyClub) {
             return Pair(
-                0.60f,
+                false,
                 "Theme–Style Coherence Review: Sacred thematic motifs paired with dance-club tempo. Flagged for curatorial review."
             )
         }
 
-        return Pair(0.98f, "Theme ↔ Emotional Profile ↔ Style Coherence: Fully Harmonized.")
+        return Pair(true, "Theme ↔ Emotional Profile ↔ Style Coherence: Fully Harmonized.")
+    }
+
+    /**
+     * UNVERIFIED / NON-CANONICAL NUMERICAL COHERENCE SCALAR
+     * Kept isolated for backward-compatibility only. Isolated from canonical governance.
+     */
+    @Deprecated("Numerical coherence scalar (0.55/0.60/0.98) is unverified. Use evaluateQualitativeThemeStyleCoherence.", level = DeprecationLevel.WARNING)
+    fun evaluateThemeStyleCoherence(
+        theme: String,
+        emotionalProfile: String,
+        genre: String,
+        stylePrompt: String
+    ): Pair<Float, String> {
+        val (isHarmonized, msg) = evaluateQualitativeThemeStyleCoherence(theme, emotionalProfile, genre, stylePrompt)
+        return if (isHarmonized) {
+            Pair(0.98f, msg)
+        } else {
+            Pair(0.55f, msg)
+        }
     }
 
     /**
@@ -175,9 +195,30 @@ object ElyzarethTurboEngine {
     }
 
     /**
-     * Foreign-Word Contamination and Awkward Expression Detection.
+     * QUALITATIVE CONTAMINATION DETECTION (Canonical & Structural Invariant)
+     * Detects raw system delimiter / token leakage.
+     * Note: Hardcoded foreign word dictionaries (despacito, merci, etc.) are isolated as UNVERIFIED / NON-CANONICAL
+     * and do NOT participate in canonical engine decisions.
      */
     fun detectContamination(lyricText: String): List<String> {
+        val anomalies = mutableListOf<String>()
+        val structuralSystemLeakagePatterns = listOf(
+            Regex("<system>|<prompt>|\\{\"theme\":|\\[INST\\]", RegexOption.IGNORE_CASE)
+        )
+        for (pattern in structuralSystemLeakagePatterns) {
+            if (pattern.containsMatchIn(lyricText)) {
+                anomalies.add("Structural system/prompt delimiter leakage detected matching: ${pattern.pattern}")
+            }
+        }
+        return anomalies
+    }
+
+    /**
+     * UNVERIFIED / NON-CANONICAL EXPERIMENTAL CONTAMINATION DICTIONARY
+     * Kept isolated behind this explicit non-canonical method so it does NOT affect canonical Elyzareth engine decisions.
+     */
+    @Deprecated("Unverified historical rule. Do not use for canonical governance.", level = DeprecationLevel.WARNING)
+    fun detectExperimentalForeignDictionaryContamination(lyricText: String): List<String> {
         val anomalies = mutableListOf<String>()
         val foreignInjectionPatterns = listOf(
             Regex("\\b(despacito|merci|sayonara|arrivederci|scheisse|hallo)\\b", RegexOption.IGNORE_CASE),
@@ -186,7 +227,7 @@ object ElyzarethTurboEngine {
         )
         for (pattern in foreignInjectionPatterns) {
             if (pattern.containsMatchIn(lyricText)) {
-                anomalies.add("Foreign-language or Latin contamination detected matching pattern: ${pattern.pattern}")
+                anomalies.add("Non-canonical experimental foreign/Latin pattern: ${pattern.pattern}")
             }
         }
         return anomalies

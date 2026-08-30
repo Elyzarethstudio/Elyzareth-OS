@@ -1135,8 +1135,31 @@ class ElyzarethOSViewModel : ViewModel() {
             showToast("Cannot Accept: Governance Decision is ${version.decision}")
             return
         }
+
+        val updatedVersion = ElyzarethGovernanceEngine.applyHumanGovernorDisposition(
+            version,
+            GovernanceDispositionChoice.RELEASE_ACCEPT,
+            "Accepted to Survivor Vault"
+        )
+        val updatedVersions = base.versions.map { if (it.versionId == version.versionId) updatedVersion else it }
+        val updatedBase = base.copy(versions = updatedVersions)
+        _baseCompositions.value = _baseCompositions.value.map { if (it.id == base.id) updatedBase else it }
+
+        // Add to archive files (Lyric Dumping)
+        val archiveFile = ArchiveFile(
+            id = "ARC-ACCEPTED-${version.versionId}-${UUID.randomUUID().toString().take(4).uppercase(Locale.US)}",
+            fileName = "${base.title.lowercase().replace(Regex("[^a-z0-9_]"), "_")}_${version.versionId}.lyr",
+            category = "LYRICS",
+            originTenant = "App 02 (Corpus Curator)",
+            previewText = version.lyricText.take(120) + "...",
+            fullText = "TITLE: ${base.title} [${version.versionId}]\nSPECIMEN ID: ${version.specimenId}\nSHA256: ${version.sha256Hash}\n\n${version.lyricText}",
+            g3SealHash = version.sha256Hash.take(16),
+            sizeKb = (version.wordCount * 0.05f).coerceAtLeast(1.2f)
+        )
+        _archiveFiles.value = listOf(archiveFile) + _archiveFiles.value.filter { it.fileName != archiveFile.fileName }
+
         addAuditLog("SURVIVOR_VAULT", "Specimen '${base.title} (${version.versionId})' accepted into Survivor Vault.", version.specimenId)
-        showToast("🟢 Accepted to Survivor Vault: ${base.title}")
+        showToast("🟢 Accepted & Archived to Survivor Vault: ${base.title}")
     }
 
     fun commitHumanGovernorDisposition(choice: GovernanceDispositionChoice, governorNotes: String = "") {
@@ -1807,6 +1830,16 @@ class ElyzarethOSViewModel : ViewModel() {
 
     fun copyFileContentToClipboard(file: ArchiveFile) {
         showToast("Copied '${file.fileName}' content to clipboard")
+    }
+
+    fun deleteArchiveFile(fileId: String) {
+        val target = _archiveFiles.value.find { it.id == fileId }
+        _archiveFiles.value = _archiveFiles.value.filter { it.id != fileId }
+        if (_selectedArchiveFile.value?.id == fileId) {
+            _selectedArchiveFile.value = _archiveFiles.value.firstOrNull()
+        }
+        addAuditLog("SURVIVOR_VAULT", "Archived lyric '${target?.fileName ?: fileId}' permanently deleted by Curator.", "ELY-ARCH-DEL")
+        showToast("🗑️ Deleted from Archive: ${target?.fileName ?: "Lyric"}")
     }
 
     // -------------------------------------------------------------

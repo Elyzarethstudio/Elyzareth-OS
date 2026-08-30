@@ -450,7 +450,9 @@ fun DesktopEnvironment(
                             onUpdateHumanEarReview = viewModel::updateHumanEarReview,
                             onIngestSafFolder = viewModel::ingestFromSafFolderUri,
                             onIngestSafDocument = viewModel::ingestFromSafDocumentUri,
-                            onStartSafScan = viewModel::scanCorpusDirectoryDryRun
+                            onStartSafScan = viewModel::scanCorpusDirectoryDryRun,
+                            archiveFiles = archiveFiles,
+                            onDeleteArchiveFile = viewModel::deleteArchiveFile
                         )
                     }
                     AppId.INTEGRATOR -> {
